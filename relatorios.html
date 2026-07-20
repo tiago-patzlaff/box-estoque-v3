@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Relatorios - Box Estoque</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="voltar">&larr; Voltar</a>
+        <h1>Relatorios</h1>
+        <span class="sub">Analise do estoque</span>
+    </div>
+    <div class="container">
+        <div class="resumo-grid" id="resumo-rel">
+            <div class="resumo-item"><div class="valor" id="r-pallets">-</div><div class="rotulo">Total Pallets</div></div>
+            <div class="resumo-item"><div class="valor" id="r-ocupadas">-</div><div class="rotulo">Posicoes Ocupadas</div></div>
+            <div class="resumo-item"><div class="valor" id="r-produtos">-</div><div class="rotulo">Produtos Distintos</div></div>
+            <div class="resumo-item"><div class="valor" id="r-ocupacao">-</div><div class="rotulo">Ocupacao</div></div>
+        </div>
+
+        <div class="chart-row">
+            <div class="chart-box">
+                <h3>Pallets por Produto (Top 10)</h3>
+                <div id="chart-produtos-rel" class="bar-chart"></div>
+            </div>
+            <div class="chart-box">
+                <h3>Ocupacao por Altura</h3>
+                <div id="chart-alturas" class="bar-chart"></div>
+            </div>
+        </div>
+
+        <div class="chart-row">
+            <div class="chart-box">
+                <h3>Ocupacao por Fileira</h3>
+                <div id="chart-fileiras-rel" class="bar-chart"></div>
+            </div>
+            <div class="chart-box">
+                <h3>Movimentacoes Hoje</h3>
+                <div id="chart-mov-hoje" class="bar-chart"></div>
+            </div>
+        </div>
+
+        <div class="card" id="criticas-rel" style="display:none;">
+            <h2 style="color:var(--danger);">&#9888; Posicoes com Estoque Critico</h2>
+            <div id="criticas-list-rel" class="item-list"></div>
+        </div>
+
+        <div class="card" id="atencao-rel" style="display:none;">
+            <h2 style="color:var(--warning);">&#9888; Posicoes com Atencao</h2>
+            <div id="atencao-list-rel" class="item-list"></div>
+        </div>
+
+        <div class="card">
+            <h2>Ultimas Movimentacoes</h2>
+            <div id="ultimas-mov" class="item-list"></div>
+        </div>
+
+        <div class="export-bar" style="justify-content:center;margin-top:10px;">
+            <button class="btn btn-outline btn-sm" onclick="exportarRelatorio()">&#128229; Exportar Relatorio CSV</button>
+        </div>
+    </div>
+    <script src="assets/js/app.js"></script>
+    <script>
+    (async function() {
+        const usuario = await App.checkAuth();
+        if (!usuario) return;
+
+        let dadosDashboard = null;
+
+        async function carregar() {
+            const res = await App.apiGet('api/dashboard');
+            if (!res || !res.ok) return;
+            dadosDashboard = res.data;
+            renderizar(dadosDashboard);
+        }
+
+        function renderizar(d) {
+            const r = d.resumo;
+            document.getElementById('r-pallets').textContent = r.total_pallets;
+            document.getElementById('r-ocupadas').textContent = r.posicoes_ocupadas + '/' + r.total_posicoes;
+            document.getElementById('r-produtos').textContent = r.produtos_distintos;
+            document.getElementById('r-ocupacao').textContent = r.ocupacao_pallets + '%';
+
+            const maxProd = Math.max(...d.por_produto.map(p => p.total), 1);
+            const colors = ['green','blue','amber','red','purple','info','pink','green','blue','amber'];
+            document.getElementById('chart-produtos-rel').innerHTML = d.por_produto.map((p, i) =>
+                `<div class="bar-row"><span class="bar-label" style="min-width:70px;text-align:left;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${App.escapeHtml(p.nome)}">${App.escapeHtml(p.nome.substring(0,10))}</span><div class="bar-track"><div class="bar-fill ${colors[i % colors.length]}" style="width:${(p.total/maxProd)*100}%">${p.total} (${p.posicoes}p)</div></div></div>`
+            ).join('');
+
+            const maxAlt = Math.max(...Object.values(d.por_altura), 1);
+            document.getElementById('chart-alturas').innerHTML = [1,2,3,4,5].map(a => {
+                const val = d.por_altura[a] || 0;
+                return `<div class="bar-row"><span class="bar-label">A${a}</span><div class="bar-track"><div class="bar-fill blue" style="width:${(val/maxAlt)*100}%">${val}</div></div></div>`;
+            }).join('');
+
+            const maxFil = Math.max(...Object.values(d.por_fileira), 1);
+            document.getElementById('chart-fileiras-rel').innerHTML = [1,4,7,10,13,16,19,22].map(f => {
+                let sum = 0;
+                for (let i = f; i < f+3 && i <= 24; i++) sum += d.por_fileira[i] || 0;
+                return `<div class="bar-row"><span class="bar-label">F${f}-${Math.min(f+2,24)}</span><div class="bar-track"><div class="bar-fill purple" style="width:${(sum/(maxAlt*3*15))*100}%">${sum}</div></div></div>`;
+            }).join('');
+
+            const movH = d.movimentacoes_hoje;
+            document.getElementById('chart-mov-hoje').innerHTML = `
+                <div class="bar-row"><span class="bar-label" style="min-width:60px;text-align:left;">Entradas</span><div class="bar-track"><div class="bar-fill green" style="width:${movH.entradas_hoje > 0 ? 70 : 5}%">${movH.entradas_hoje}x (${movH.entradas_qtd}p)</div></div></div>
+                <div class="bar-row"><span class="bar-label" style="min-width:60px;text-align:left;">Saidas</span><div class="bar-track"><div class="bar-fill red" style="width:${movH.saidas_hoje > 0 ? 70 : 5}%">${movH.saidas_hoje}x (${movH.saidas_qtd}p)</div></div></div>
+            `;
+
+            if (d.criticas.length > 0) {
+                document.getElementById('criticas-rel').style.display = '';
+                document.getElementById('criticas-list-rel').innerHTML = d.criticas.map(c =>
+                    `<div class="clickable"><span class="item-dot" style="background:var(--danger);"></span><div class="item-info"><strong>F${c.fileira} &middot; A${c.altura}</strong><span>${App.escapeHtml(c.produto)}</span></div><span class="item-qty" style="color:var(--danger);">${c.quantidade}/15</span></div>`
+                ).join('');
+            }
+
+            if (d.atencao.length > 0) {
+                document.getElementById('atencao-rel').style.display = '';
+                document.getElementById('atencao-list-rel').innerHTML = d.atencao.map(c =>
+                    `<div class="clickable"><span class="item-dot" style="background:var(--warning);"></span><div class="item-info"><strong>F${c.fileira} &middot; A${c.altura}</strong><span>${App.escapeHtml(c.produto)}</span></div><span class="item-qty" style="color:var(--warning);">${c.quantidade}/15</span></div>`
+                ).join('');
+            }
+
+            document.getElementById('ultimas-mov').innerHTML = d.ultimas_movimentacoes.length ? d.ultimas_movimentacoes.map(m => {
+                const tipoLabel = m.tipo === 'entrada' ? 'Entrada' : m.tipo === 'saida' ? 'Saida' : 'Transf.';
+                const cls = m.tipo === 'entrada' ? 'color:var(--success)' : m.tipo === 'saida' ? 'color:var(--danger)' : 'color:var(--info)';
+                return `<div><span style="font-weight:700;${cls};min-width:60px;">${tipoLabel}</span><span class="item-dot" style="background:${App.escapeHtml(m.produto_cor || '#666')}"></span><div style="flex:1;"><strong>${App.escapeHtml(m.produto_nome || '-')}</strong><span style="font-size:12px;color:var(--text-muted);">${App.formatDate(m.created_at)}</span></div><span style="font-weight:800;">${m.quantidade}x</span></div>`;
+            }).join('') : '<p style="text-align:center;color:var(--text-muted);padding:20px;">Nenhuma movimentacao hoje</p>';
+        }
+
+        window.exportarRelatorio = function() {
+            if (!dadosDashboard) return;
+            const r = dadosDashboard.resumo;
+            const headers = ['Metrica', 'Valor'];
+            const rows = [
+                ['Total Pallets', r.total_pallets],
+                ['Posicoes Ocupadas', r.posicoes_ocupadas],
+                ['Posicoes Livres', r.posicoes_livres],
+                ['Capacidade Maxima', r.capacidade_maxima],
+                ['Produtos Distintos', r.produtos_distintos],
+                ['Ocupacao Posicoes %', r.ocupacao_posicoes],
+                ['Ocupacao Pallets %', r.ocupacao_pallets],
+                [''],
+                ['PRODUTO', 'PALLETS', 'POSICOES'],
+                ...dadosDashboard.por_produto.map(p => [p.nome, p.total, p.posicoes])
+            ];
+            App.generateCsv(headers, rows, `relatorio_${new Date().toISOString().slice(0,10)}.csv`);
+            App.toast('Relatorio exportado!', 'success');
+        };
+
+        await carregar();
+    })();
+    </script>
+</body>
+</html>

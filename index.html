@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Box Estoque</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <div class="header">
+        <h1>Box Estoque</h1>
+        <span class="sub">Controle de Pallets</span>
+        <span class="badge">v3.0</span>
+        <div id="user-area"></div>
+    </div>
+    <div class="container">
+        <div class="resumo-grid" id="resumo">
+            <div class="resumo-item"><div class="valor" id="total-pallets"><span class="skeleton" style="display:inline-block;width:40px;height:28px;">&nbsp;</span></div><div class="rotulo">Pallets</div></div>
+            <div class="resumo-item"><div class="valor" id="posicoes-ocupadas"><span class="skeleton" style="display:inline-block;width:30px;height:28px;">&nbsp;</span></div><div class="rotulo">Ocupadas</div></div>
+            <div class="resumo-item"><div class="valor" id="posicoes-livres"><span class="skeleton" style="display:inline-block;width:30px;height:28px;">&nbsp;</span></div><div class="rotulo">Livres</div></div>
+            <div class="resumo-item"><div class="valor" id="capacidade"><span class="skeleton" style="display:inline-block;width:40px;height:28px;">&nbsp;</span></div><div class="rotulo">Capacidade</div></div>
+        </div>
+
+        <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <span style="font-size:14px;font-weight:700;">Ocupacao do Box</span>
+                <span style="font-size:24px;font-weight:800;" id="percentual-box">-</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%;"></div></div>
+            <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:11px;color:var(--text-muted);">
+                <span id="pct-posicoes">-</span>
+                <span id="pct-pallets">-</span>
+            </div>
+        </div>
+
+        <div class="dash-grid" id="dash-stats" style="display:none;">
+            <div class="dash-stat"><div class="ds-icon green">+</div><div><div class="ds-val" id="entradas-hoje">0</div><div class="ds-label">Entradas Hoje</div></div></div>
+            <div class="dash-stat"><div class="ds-icon red">&minus;</div><div><div class="ds-val" id="saidas-hoje">0</div><div class="ds-label">Saidas Hoje</div></div></div>
+            <div class="dash-stat"><div class="ds-icon blue">&#9881;</div><div><div class="ds-val" id="produtos-distintos">0</div><div class="ds-label">Produtos</div></div></div>
+            <div class="dash-stat"><div class="ds-icon amber">&#9888;</div><div><div class="ds-val" id="criticas-count">0</div><div class="ds-label">Criticas</div></div></div>
+        </div>
+
+        <div class="chart-row" id="charts-area" style="display:none;">
+            <div class="chart-box">
+                <h3>Pallets por Fileira</h3>
+                <div id="chart-fileiras" class="bar-chart"></div>
+            </div>
+            <div class="chart-box">
+                <h3>Pallets por Produto</h3>
+                <div id="chart-produtos" class="bar-chart"></div>
+            </div>
+        </div>
+
+        <div class="card" id="criticas-card" style="display:none;">
+            <h2 style="color:var(--danger);">&#9888; Posicoes Criticas</h2>
+            <div id="criticas-list" class="item-list"></div>
+        </div>
+
+        <div class="menu-grid">
+            <a href="entrada.html" class="menu-card">
+                <div class="icon green">+</div><h2>Registrar Entrada</h2><p>Adicionar pallets com scanner QR</p>
+            </a>
+            <a href="saida.html" class="menu-card">
+                <div class="icon red">&minus;</div><h2>Registrar Saida</h2><p>Remover pallets com scanner QR</p>
+            </a>
+            <a href="transferencia.html" class="menu-card">
+                <div class="icon blue">&#8644;</div><h2>Transferencia</h2><p>Mover entre posicoes</p>
+            </a>
+            <a href="inventario.html" class="menu-card">
+                <div class="icon purple">&#128203;</div><h2>Inventario</h2><p>Estoque completo com filtros</p>
+            </a>
+            <a href="visualizacao.html" class="menu-card">
+                <div class="icon pink">&#9632;</div><h2>Visualizacao</h2><p>Grade interativa do box</p>
+            </a>
+            <a href="qrcodes.html" class="menu-card">
+                <div class="icon amber">&#9670;</div><h2>QR Codes</h2><p>Gerar etiquetas para impressao</p>
+            </a>
+            <a href="movimentacoes.html" class="menu-card">
+                <div class="icon info">&#10227;</div><h2>Movimentacoes</h2><p>Historico completo de entradas e saidas</p>
+            </a>
+            <a href="cadastro_produto.html" class="menu-card">
+                <div class="icon green">&#9881;</div><h2>Produtos</h2><p>Cadastrar, editar e gerenciar</p>
+            </a>
+        </div>
+    </div>
+
+    <script src="assets/js/app.js"></script>
+    <script>
+    (async function() {
+        const usuario = await App.checkAuth();
+        if (!usuario) return;
+
+        document.getElementById('user-area').innerHTML = App.renderUserHeader(usuario);
+
+        const data = await App.apiGet('api/dashboard');
+        if (!data || !data.ok) return;
+        const d = data.data;
+        const r = d.resumo;
+
+        document.getElementById('total-pallets').textContent = r.total_pallets;
+        document.getElementById('posicoes-ocupadas').textContent = r.posicoes_ocupadas;
+        document.getElementById('posicoes-livres').textContent = r.posicoes_livres;
+        document.getElementById('capacidade').textContent = r.capacidade_maxima.toLocaleString();
+
+        const pctBox = Math.max(r.ocupacao_posicoes, r.ocupacao_pallets);
+        document.getElementById('percentual-box').textContent = pctBox + '%';
+        document.getElementById('percentual-box').style.background = pctBox > 80 ? 'var(--grad-danger)' : pctBox > 50 ? 'var(--grad-warning)' : 'var(--grad-success)';
+        document.getElementById('percentual-box').style['-webkit-background-clip'] = 'text';
+        document.getElementById('percentual-box').style['-webkit-text-fill-color'] = 'transparent';
+        document.getElementById('percentual-box').style['background-clip'] = 'text';
+        document.getElementById('progress-fill').style.width = pctBox + '%';
+        document.getElementById('pct-posicoes').textContent = r.ocupacao_posicoes + '% das posicoes';
+        document.getElementById('pct-pallets').textContent = r.ocupacao_pallets + '% da capacidade';
+
+        if (r.ocupacao_pallets > 80) document.getElementById('progress-fill').style.background = 'var(--grad-danger)';
+        else if (r.ocupacao_pallets > 50) document.getElementById('progress-fill').style.background = 'var(--grad-warning)';
+
+        document.getElementById('entradas-hoje').textContent = d.movimentacoes_hoje.entradas_hoje;
+        document.getElementById('saidas-hoje').textContent = d.movimentacoes_hoje.saidas_hoje;
+        document.getElementById('produtos-distintos').textContent = r.produtos_distintos;
+        document.getElementById('criticas-count').textContent = d.criticas.length;
+        document.getElementById('dash-stats').style.display = '';
+
+        if (d.criticas.length > 0) {
+            document.getElementById('criticas-card').style.display = '';
+            document.getElementById('criticas-list').innerHTML = d.criticas.map(c =>
+                `<div class="clickable" onclick="location.href='visualizacao.html'">` +
+                `<span class="item-dot" style="background:var(--danger);"></span>` +
+                `<div class="item-info"><strong>F${c.fileira} &middot; A${c.altura}</strong><span>${App.escapeHtml(c.produto)}</span></div>` +
+                `<span class="item-qty" style="color:var(--danger);">${c.quantidade}/15</span></div>`
+            ).join('');
+        }
+
+        const maxFileira = Math.max(...Object.values(d.por_fileira), 1);
+        const fileirasHtml = [1,6,11,17,22].map(f => {
+            const vals = [];
+            for (let i = f; i < Math.min(f + 5, 25); i++) {
+                vals.push({ label: 'F' + i, val: d.por_fileira[i] || 0 });
+            }
+            return vals;
+        }).flat().slice(0, 12).map(v =>
+            `<div class="bar-row"><span class="bar-label">${v.label}</span><div class="bar-track"><div class="bar-fill blue" style="width:${(v.val/maxFileira)*100}%">${v.val > 0 ? v.val : ''}</div></div></div>`
+        ).join('');
+        document.getElementById('chart-fileiras').innerHTML = fileirasHtml;
+
+        const produtosHtml = d.por_produto.slice(0, 8).map((p, i) => {
+            const colors = ['green','blue','amber','red','purple','blue','amber','green'];
+            return `<div class="bar-row"><span class="bar-label" style="min-width:60px;text-align:left;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${App.escapeHtml(p.nome)}">${App.escapeHtml(p.nome.substring(0,8))}</span><div class="bar-track"><div class="bar-fill ${colors[i]}" style="width:${(p.total/r.total_pallets)*100}%">${p.total}</div></div></div>`;
+        }).join('');
+        document.getElementById('chart-produtos').innerHTML = produtosHtml;
+        document.getElementById('charts-area').style.display = '';
+    })();
+    </script>
+</body>
+</html>

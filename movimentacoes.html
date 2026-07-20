@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Movimentacoes</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="voltar">&larr; Voltar</a>
+        <h1>Movimentacoes</h1>
+        <span class="sub">Historico completo</span>
+    </div>
+    <div class="container">
+        <div class="card">
+            <div class="filter-bar">
+                <div class="filter-item"><label>Tipo</label>
+                    <select id="filtro-tipo"><option value="">Todos</option><option value="entrada">Entradas</option><option value="saida">Saidas</option><option value="transferencia">Transferencias</option></select>
+                </div>
+                <div class="filter-item"><label>Data Inicio</label><input type="date" id="filtro-data-inicio"></div>
+                <div class="filter-item"><label>Data Fim</label><input type="date" id="filtro-data-fim"></div>
+                <div style="display:flex;align-items:flex-end;gap:8px;">
+                    <button class="btn btn-outline btn-sm" id="btn-filtrar">Filtrar</button>
+                    <button class="btn btn-outline btn-sm" id="btn-limpar">Limpar</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="export-bar">
+            <button class="btn btn-outline btn-xs" onclick="exportarCsv()">&#128229; Exportar CSV</button>
+        </div>
+
+        <div class="card" style="max-width:800px;margin:0 auto;">
+            <h2>Historico</h2>
+            <div id="lista-mov"></div>
+        </div>
+        <div class="pagination" id="pagination"></div>
+    </div>
+    <script src="assets/js/app.js"></script>
+    <script>
+    (async function() {
+        const usuario = await App.checkAuth();
+        if (!usuario) return;
+
+        let paginaAtual = 1;
+        let dadosAtuais = [];
+
+        async function carregar(page = 1) {
+            const div = document.getElementById('lista-mov');
+            div.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Carregando...</div>';
+            let url = `api/movimentacoes?page=${page}&limit=20`;
+            const tipo = document.getElementById('filtro-tipo').value;
+            const di = document.getElementById('filtro-data-inicio').value;
+            const df = document.getElementById('filtro-data-fim').value;
+            if (tipo) url += `&tipo=${tipo}`;
+            if (di) url += `&data_inicio=${di}`;
+            if (df) url += `&data_fim=${df}`;
+
+            const res = await App.apiGet(url);
+            if (!res || !res.ok) { div.innerHTML = '<div class="alert-error" style="display:block;">Erro ao carregar</div>'; return; }
+
+            dadosAtuais = res.data.movimentacoes || [];
+            const pag = res.data.paginacao;
+
+            if (!dadosAtuais.length) {
+                div.innerHTML = '<div class="empty-state"><p>Nenhuma movimentacao encontrada</p></div>';
+                document.getElementById('pagination').innerHTML = '';
+                return;
+            }
+
+            div.innerHTML = '<div class="item-list">' + dadosAtuais.map(m => {
+                const tipoLabel = m.tipo === 'entrada' ? 'Entrada' : m.tipo === 'saida' ? 'Saida' : 'Transferencia';
+                const cls = m.tipo === 'entrada' ? 'style="color:var(--success);font-weight:700;"' : m.tipo === 'saida' ? 'style="color:var(--danger);font-weight:700;"' : 'style="color:var(--info);font-weight:700;"';
+                const data = App.formatDate(m.created_at);
+                const posOrig = `F${m.fileira_origem}\u00B7A${m.altura_origem}`;
+                const posDest = m.fileira_destino ? ` \u2192 F${m.fileira_destino}\u00B7A${m.altura_destino}` : '';
+                return `<div>
+                    <span ${cls}>${App.escapeHtml(tipoLabel)}</span>
+                    <span style="font-weight:700;min-width:80px;font-size:13px;">${posOrig}${posDest}</span>
+                    <span class="item-dot" style="background:${App.escapeHtml(m.produto_cor || '#666')}"></span>
+                    <div style="flex:1;min-width:0;">
+                        <strong style="font-size:14px;display:block;">${App.escapeHtml(m.produto_nome || 'Produto removido')}</strong>
+                        <span style="font-size:12px;color:var(--text-muted);">${data}${m.observacao ? ' \u00B7 ' + App.escapeHtml(m.observacao) : ''}${m.usuario_nome ? ' \u00B7 por ' + App.escapeHtml(m.usuario_nome) : ''}</span>
+                    </div>
+                    <span style="font-weight:800;font-size:15px;white-space:nowrap;">${m.quantidade}x</span>
+                </div>`;
+            }).join('') + '</div>';
+
+            renderPagination(pag);
+        }
+
+        function renderPagination(pag) {
+            const div = document.getElementById('pagination');
+            if (pag.total_paginas <= 1) { div.innerHTML = ''; return; }
+            let html = `<button ${pag.pagina_atual <= 1 ? 'disabled' : ''} onclick="irPagina(${pag.pagina_atual - 1})">&laquo;</button>`;
+            for (let i = 1; i <= pag.total_paginas; i++) {
+                html += `<button class="${i === pag.pagina_atual ? 'active' : ''}" onclick="irPagina(${i})">${i}</button>`;
+            }
+            html += `<button ${pag.pagina_atual >= pag.total_paginas ? 'disabled' : ''} onclick="irPagina(${pag.pagina_atual + 1})">&raquo;</button>`;
+            html += `<span class="page-info">${pag.total_registros} registros</span>`;
+            div.innerHTML = html;
+        }
+
+        window.irPagina = function(p) { paginaAtual = p; carregar(p); window.scrollTo({top: 0, behavior: 'smooth'}); };
+
+        window.exportarCsv = function() {
+            if (!dadosAtuais.length) { App.toast('Nenhum dado para exportar', 'warning'); return; }
+            const headers = ['Data', 'Tipo', 'Posicao Origem', 'Posicao Destino', 'Produto', 'Quantidade', 'Observacao', 'Usuario'];
+            const rows = dadosAtuais.map(m => [
+                App.formatDate(m.created_at), m.tipo,
+                `F${m.fileira_origem} A${m.altura_origem}`,
+                m.fileira_destino ? `F${m.fileira_destino} A${m.altura_destino}` : '',
+                m.produto_nome || '', m.quantidade, m.observacao || '', m.usuario_nome || ''
+            ]);
+            App.generateCsv(headers, rows, `movimentacoes_${new Date().toISOString().slice(0,10)}.csv`);
+            App.toast('CSV exportado!', 'success');
+        };
+
+        document.getElementById('btn-filtrar').addEventListener('click', () => { paginaAtual = 1; carregar(1); });
+        document.getElementById('btn-limpar').addEventListener('click', () => {
+            document.getElementById('filtro-tipo').value = '';
+            document.getElementById('filtro-data-inicio').value = '';
+            document.getElementById('filtro-data-fim').value = '';
+            paginaAtual = 1;
+            carregar(1);
+        });
+
+        await carregar(1);
+    })();
+    </script>
+</body>
+</html>

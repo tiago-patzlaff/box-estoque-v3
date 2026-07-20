@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Transferencia</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="voltar">&larr; Voltar</a>
+        <h1>Transferencia</h1>
+        <span class="sub">Mover entre posicoes</span>
+    </div>
+    <div class="container">
+        <div class="card" style="max-width:540px;margin:0 auto;">
+            <h2>Nova Transferencia</h2>
+            <div id="alerta"></div>
+            <form id="form-transfer">
+                <div class="form-group"><label>Produto</label>
+                    <select id="produto_id" required><option value="">Selecione um produto...</option></select>
+                </div>
+                <div class="section-title">Origem</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Fileira</label><input type="number" id="fileira-origem" min="1" max="24" required placeholder="1-24"></div>
+                    <div class="form-group"><label>Altura</label><input type="number" id="altura-origem" min="1" max="5" required placeholder="1-5"></div>
+                </div>
+                <div class="transfer-arrow">&#8595;</div>
+                <div class="section-title">Destino</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Fileira</label><input type="number" id="fileira-destino" min="1" max="24" required placeholder="1-24"></div>
+                    <div class="form-group"><label>Altura</label><input type="number" id="altura-destino" min="1" max="5" required placeholder="1-5"></div>
+                </div>
+                <div class="form-group"><label>Quantidade</label><input type="number" id="quantidade" min="1" max="15" required placeholder="Quantidade a transferir"></div>
+                <div class="form-group"><label>Observacao</label><textarea id="observacao" rows="2" placeholder="Opcional"></textarea></div>
+                <button type="submit" class="btn btn-info btn-block" id="btn-submit">&#8644; Transferir</button>
+            </form>
+        </div>
+        <div class="card" style="max-width:540px;margin:20px auto 0;">
+            <h2>Posicoes Ocupadas</h2>
+            <div id="estoque-pos" class="item-list" style="max-height:350px;overflow-y:auto;"></div>
+        </div>
+    </div>
+    <script src="assets/js/app.js"></script>
+    <script>
+    (async function() {
+        const usuario = await App.checkAuth();
+        if (!usuario) return;
+        if (usuario.perfil === 'visualizador') { window.location.href = 'index.html'; return; }
+
+        let todasPosicoes = [];
+
+        async function carregarDados() {
+            const [produtos, dataPos] = await Promise.all([
+                App.carregarProdutos(),
+                App.carregarPosicoes()
+            ]);
+            const raw = dataPos.posicoes || [];
+            todasPosicoes = [];
+            raw.forEach(p => {
+                (p.produtos || []).forEach(pr => {
+                    todasPosicoes.push({
+                        produto_id: pr.produto_id,
+                        produto_nome: pr.produto_nome,
+                        produto_codigo: pr.produto_codigo,
+                        produto_cor: pr.produto_cor,
+                        fileira: p.fileira,
+                        altura: p.altura,
+                        quantidade: pr.quantidade
+                    });
+                });
+            });
+            const sel = document.getElementById('produto_id');
+            sel.innerHTML = '<option value="">Selecione um produto...</option>' +
+                produtos.map(p => `<option value="${p.id}">${App.escapeHtml(p.nome)} (${App.escapeHtml(p.codigo)})</option>`).join('');
+            renderizarPosicoes();
+        }
+
+        function renderizarPosicoes() {
+            const div = document.getElementById('estoque-pos');
+            const ocupadas = todasPosicoes.filter(p => p.quantidade > 0);
+            if (!ocupadas.length) {
+                div.innerHTML = '<p style="color:var(--text-muted);font-size:13px;text-align:center;padding:24px;">Nenhuma posicao ocupada.</p>';
+                return;
+            }
+            div.innerHTML = ocupadas.map(p =>
+                `<div class="clickable" onclick="preencher(${p.produto_id}, ${p.fileira}, ${p.altura})">
+                    <span class="item-dot" style="background:${App.escapeHtml(p.produto_cor || '#666')}"></span>
+                    <div class="item-info"><strong>${App.escapeHtml(p.produto_nome || 'N/A')}</strong><span>F${p.fileira} &middot; A${p.altura}</span></div>
+                    <span class="item-qty">${p.quantidade} pallets</span>
+                </div>`
+            ).join('');
+        }
+
+        window.preencher = function(pid, f, a) {
+            document.getElementById('produto_id').value = pid;
+            document.getElementById('fileira-origem').value = f;
+            document.getElementById('altura-origem').value = a;
+            document.getElementById('quantidade').focus();
+        };
+
+        document.getElementById('form-transfer').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = {
+                produto_id: parseInt(document.getElementById('produto_id').value),
+                fileira_origem: parseInt(document.getElementById('fileira-origem').value),
+                altura_origem: parseInt(document.getElementById('altura-origem').value),
+                fileira_destino: parseInt(document.getElementById('fileira-destino').value),
+                altura_destino: parseInt(document.getElementById('altura-destino').value),
+                quantidade: parseInt(document.getElementById('quantidade').value),
+                observacao: document.getElementById('observacao').value
+            };
+            const btn = document.getElementById('btn-submit');
+            btn.disabled = true;
+            const res = await App.apiPost('api/transferencia', data);
+            btn.disabled = false;
+            if (res && res.ok) {
+                App.toast('Transferencia realizada com sucesso!', 'success');
+                document.getElementById('form-transfer').reset();
+                await carregarDados();
+            } else {
+                App.toast(res?.data?.erro || 'Erro ao transferir', 'error');
+            }
+        });
+
+        await carregarDados();
+    })();
+    </script>
+</body>
+</html>

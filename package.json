@@ -1,0 +1,10 @@
+{
+  "name": "box-estoque-v3",
+  "version": "3.0.0",
+  "private": true,
+  "dependencies": {
+    "pg": "^8.12.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"
+  }
+}

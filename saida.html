@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Registrar Saida</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="voltar">&larr; Voltar</a>
+        <h1>Registrar Saida</h1>
+        <span class="sub">Remover pallets</span>
+    </div>
+    <div class="container">
+        <div class="card" style="max-width:540px;margin:0 auto;">
+            <h2>Nova Saida</h2>
+            <div id="alerta"></div>
+            <div id="nao-encontrado" class="nao-encontrado" style="display:none;"></div>
+            <form id="form-saida">
+                <div class="form-group">
+                    <label>Produto</label>
+                    <div class="form-row" style="gap:10px;grid-template-columns:1fr auto;">
+                        <select id="produto_id" required><option value="">Selecione...</option></select>
+                        <button type="button" class="btn btn-outline qr-btn" id="btn-scan" style="padding:10px 14px;" title="Ler QR Code">&#128247;</button>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Fileira</label><input type="number" id="fileira" min="1" max="24" required placeholder="1-24"></div>
+                    <div class="form-group"><label>Altura</label><input type="number" id="altura" min="1" max="5" required placeholder="1-5"></div>
+                </div>
+                <div class="form-group"><label>Quantidade</label><input type="number" id="quantidade" min="1" max="15" required placeholder="Ex: 5"></div>
+                <div class="form-group"><label>Observacao</label><textarea id="observacao" rows="2" placeholder="Opcional"></textarea></div>
+                <button type="submit" class="btn btn-danger btn-block" id="btn-submit">Registrar Saida</button>
+            </form>
+            <div id="qr-confirm" style="display:none;margin-top:18px;padding:18px;border-radius:var(--radius-sm);background:var(--success-bg);border:2px solid rgba(0,214,143,0.3);">
+                <div style="font-size:14px;font-weight:700;color:var(--success);margin-bottom:10px;">&#10003; QR Code lido com sucesso!</div>
+                <div style="font-size:14px;font-weight:600;margin-bottom:4px;" id="qr-confirm-produto"></div>
+                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;" id="qr-confirm-posicao"></div>
+                <div style="display:flex;gap:10px;">
+                    <button class="btn btn-success" id="btn-confirmar" style="flex:1;">&#10003; Confirmar Saida</button>
+                    <button class="btn btn-outline" id="btn-cancelar-qr">Cancelar</button>
+                </div>
+            </div>
+            <div id="multi-produto-select" style="display:none;margin-top:18px;padding:18px;border-radius:var(--radius-sm);background:var(--surface-solid);border:1px solid var(--border);">
+                <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px;">Esta posicao tem multiplos produtos. Qual deseja retirar?</div>
+                <div id="multi-produto-list"></div>
+            </div>
+        </div>
+        <div class="card" style="max-width:540px;margin:20px auto 0;">
+            <h2>Estoque por posicao</h2>
+            <div id="estoque-pos" class="item-list" style="max-height:350px;overflow-y:auto;"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="qr-modal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Escaneie o QR Code da posicao</h3>
+                <button class="modal-close" id="qr-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="reader"></div>
+                <div id="qr-status" style="display:none;"></div>
+                <button class="btn btn-outline btn-block" id="qr-cancel" style="margin-top:10px;">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/js/app.js"></script>
+    <script>
+    (async function() {
+        const usuario = await App.checkAuth();
+        if (!usuario) return;
+        if (usuario.perfil === 'visualizador') { window.location.href = 'index.html'; return; }
+
+        let html5QrCode = null;
+        let scannerRunning = false;
+        let todasPosicoes = [];
+        let posicoesMap = {};
+
+        function achatarPosicoes(posicoes) {
+            const resultado = [];
+            posicoes.forEach(p => {
+                const produtos = p.produtos || [];
+                if (produtos.length === 0 && p.quantidade === 0) return;
+                produtos.forEach(pr => {
+                    resultado.push({
+                        produto_id: pr.produto_id,
+                        produto_nome: pr.produto_nome,
+                        produto_codigo: pr.produto_codigo,
+                        produto_cor: pr.produto_cor,
+                        fileira: p.fileira,
+                        altura: p.altura,
+                        quantidade: pr.quantidade
+                    });
+                });
+            });
+            return resultado;
+        }
+
+        async function carregarDados() {
+            const [resP, dataPos] = await Promise.all([
+                App.carregarProdutos(),
+                App.carregarPosicoes()
+            ]);
+            todasPosicoes = dataPos.posicoes || [];
+            posicoesMap = {};
+            todasPosicoes.forEach(p => { posicoesMap[p.fileira + '_' + p.altura] = p; });
+
+            const flat = achatarPosicoes(todasPosicoes);
+            const sel = document.getElementById('produto_id');
+            const produtosUnicos = [];
+            const seen = new Set();
+            flat.forEach(p => {
+                if (!seen.has(p.produto_id)) {
+                    seen.add(p.produto_id);
+                    produtosUnicos.push(p);
+                }
+            });
+            sel.innerHTML = '<option value="">Selecione um produto...</option>' +
+                produtosUnicos.map(p => `<option value="${p.produto_id}">${App.escapeHtml(p.produto_nome)} (${App.escapeHtml(p.produto_codigo || '')})</option>`).join('');
+        }
+
+        function renderizarPosicoes(filtrarProdutoId) {
+            const div = document.getElementById('estoque-pos');
+            const flat = achatarPosicoes(todasPosicoes);
+            const ocupadas = flat.filter(p => p.quantidade > 0 && (!filtrarProdutoId || p.produto_id == filtrarProdutoId));
+            if (ocupadas.length === 0) {
+                div.innerHTML = '<p style="color:var(--text-muted);font-size:13px;text-align:center;padding:24px;">Nenhuma posicao encontrada.</p>';
+                return;
+            }
+            div.innerHTML = ocupadas.map(p =>
+                `<div class="clickable" onclick="preencherPosicao(${p.produto_id}, ${p.fileira}, ${p.altura})">` +
+                `<span class="item-dot" style="background:${App.escapeHtml(p.produto_cor || '#666')};"></span>` +
+                `<div class="item-info"><strong>${App.escapeHtml(p.produto_nome || 'N/A')}</strong><span>F${p.fileira} · A${p.altura}</span></div>` +
+                `<span class="item-qty">${p.quantidade} pallets</span></div>`
+            ).join('');
+        }
+
+        window.preencherPosicao = function(produtoId, fileira, altura) {
+            document.getElementById('produto_id').value = produtoId;
+            document.getElementById('fileira').value = fileira;
+            document.getElementById('altura').value = altura;
+            const pos = posicoesMap[fileira + '_' + altura];
+            if (pos && pos.produtos) {
+                const pr = pos.produtos.find(p => p.produto_id == produtoId);
+                if (pr) document.getElementById('quantidade').max = pr.quantidade;
+            }
+            document.getElementById('quantidade').focus();
+            renderizarPosicoes(produtoId);
+        };
+
+        function mostrarSelecaoMultiProdutos(fileira, altura) {
+            const pos = posicoesMap[fileira + '_' + altura];
+            if (!pos || !pos.produtos || pos.produtos.length <= 1) return false;
+
+            const div = document.getElementById('multi-produto-list');
+            div.innerHTML = pos.produtos.map(pr =>
+                `<div class="clickable" onclick="preencherPosicao(${pr.produto_id}, ${fileira}, ${altura});document.getElementById('multi-produto-select').style.display='none';" style="padding:10px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:10px;">` +
+                `<span class="item-dot" style="background:${App.escapeHtml(pr.produto_cor || '#666')};flex-shrink:0;"></span>` +
+                `<div style="flex:1;"><strong style="font-size:13px;">${App.escapeHtml(pr.produto_nome)}</strong><br><span style="font-size:12px;color:var(--text-muted);">${App.escapeHtml(pr.produto_codigo || '')} · ${pr.quantidade} pallets</span></div>` +
+                `</div>`
+            ).join('');
+            document.getElementById('multi-produto-select').style.display = 'block';
+            return true;
+        }
+
+        document.getElementById('produto_id').addEventListener('change', function() {
+            const id = this.value;
+            if (id) {
+                const flat = achatarPosicoes(todasPosicoes);
+                const posicoes = flat.filter(p => p.produto_id == id && p.quantidade > 0);
+                if (posicoes.length === 1) {
+                    document.getElementById('fileira').value = posicoes[0].fileira;
+                    document.getElementById('altura').value = posicoes[0].altura;
+                    document.getElementById('quantidade').max = posicoes[0].quantidade;
+                } else {
+                    document.getElementById('fileira').value = '';
+                    document.getElementById('altura').value = '';
+                }
+                renderizarPosicoes(id);
+            } else {
+                document.getElementById('fileira').value = '';
+                document.getElementById('altura').value = '';
+                document.getElementById('estoque-pos').innerHTML = '';
+            }
+        });
+
+        document.getElementById('fileira').addEventListener('input', atualizarMaxQtd);
+        document.getElementById('altura').addEventListener('input', atualizarMaxQtd);
+
+        function atualizarMaxQtd() {
+            const f = parseInt(document.getElementById('fileira').value);
+            const a = parseInt(document.getElementById('altura').value);
+            const pid = parseInt(document.getElementById('produto_id').value);
+            if (!f || !a || !pid) return;
+            const pos = posicoesMap[f + '_' + a];
+            if (pos && pos.produtos) {
+                const pr = pos.produtos.find(p => p.produto_id == pid);
+                if (pr) document.getElementById('quantidade').max = pr.quantidade;
+            }
+        }
+
+        async function abrirScanner() {
+            const modal = document.getElementById('qr-modal');
+            modal.classList.add('open');
+            document.getElementById('qr-status').style.display = 'none';
+            document.getElementById('multi-produto-select').style.display = 'none';
+            try {
+                html5QrCode = new Html5Qrcode("reader");
+                scannerRunning = true;
+                await html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 220, height: 220 } }, onScanSuccess, () => {});
+            } catch(e) {
+                const s = document.getElementById('qr-status');
+                s.style.display = 'block'; s.className = 'qr-result error';
+                s.textContent = 'Erro ao acessar camera: ' + (e.message || 'Use HTTPS ou localhost');
+            }
+        }
+
+        async function onScanSuccess(decodedText) {
+            if (!scannerRunning) return;
+            const match = decodedText.match(/^ESTOQUE:POS:F(\d+):A(\d+)$/i);
+            if (match) {
+                const f = parseInt(match[1]), a = parseInt(match[2]);
+                if (f >= 1 && f <= 24 && a >= 1 && a <= 5) {
+                    document.getElementById('fileira').value = f;
+                    document.getElementById('altura').value = a;
+                    fecharScanner(true);
+
+                    const pos = posicoesMap[f + '_' + a];
+                    if (pos && pos.produtos && pos.produtos.length > 0) {
+                        if (pos.produtos.length === 1) {
+                            const pr = pos.produtos[0];
+                            document.getElementById('produto_id').value = pr.produto_id;
+                            document.getElementById('quantidade').value = pr.quantidade;
+                            document.getElementById('quantidade').max = pr.quantidade;
+                            document.getElementById('observacao').value = 'Saida via QR';
+                            document.getElementById('qr-confirm-produto').textContent = pr.produto_nome + ' · ' + pr.quantidade + ' pallets';
+                            document.getElementById('qr-confirm-posicao').textContent = 'F' + f + ' · A' + a;
+                            document.getElementById('qr-confirm').style.display = 'block';
+                            document.getElementById('qr-confirm').scrollIntoView({behavior:'smooth'});
+                        } else {
+                            mostrarSelecaoMultiProdutos(f, a);
+                        }
+                    } else {
+                        App.toast('Posicao vazia', 'warning');
+                    }
+                    return;
+                }
+            }
+            fecharScanner(true);
+            App.toast('QR de posicao nao reconhecido', 'warning');
+        }
+
+        function fecharScanner(success) {
+            if (html5QrCode && scannerRunning) { html5QrCode.stop().catch(() => {}); scannerRunning = false; }
+            document.getElementById('qr-modal').classList.remove('open');
+            if (success) App.toast('Posicao escaneada!', 'success');
+        }
+
+        document.getElementById('btn-scan').addEventListener('click', abrirScanner);
+        document.getElementById('qr-close').addEventListener('click', () => fecharScanner(false));
+        document.getElementById('qr-cancel').addEventListener('click', () => fecharScanner(false));
+        document.getElementById('btn-confirmar').addEventListener('click', () => document.getElementById('form-saida').requestSubmit());
+        document.getElementById('btn-cancelar-qr').addEventListener('click', () => {
+            document.getElementById('qr-confirm').style.display = 'none';
+            document.getElementById('quantidade').value = '';
+            document.getElementById('observacao').value = '';
+        });
+
+        document.getElementById('form-saida').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = {
+                tipo: 'saida',
+                produto_id: parseInt(document.getElementById('produto_id').value),
+                fileira: parseInt(document.getElementById('fileira').value),
+                altura: parseInt(document.getElementById('altura').value),
+                quantidade: parseInt(document.getElementById('quantidade').value),
+                observacao: document.getElementById('observacao').value
+            };
+            const btn = document.getElementById('btn-submit');
+            btn.disabled = true;
+            const res = await App.apiPost('api/movimentacao', data);
+            btn.disabled = false;
+            if (res && res.ok) {
+                App.toast('Saida registrada com sucesso!', 'success');
+                document.getElementById('quantidade').value = '';
+                document.getElementById('observacao').value = '';
+                document.getElementById('qr-confirm').style.display = 'none';
+                document.getElementById('multi-produto-select').style.display = 'none';
+                await carregarDados();
+                const pid = document.getElementById('produto_id').value;
+                if (pid) renderizarPosicoes(pid);
+            } else {
+                App.toast(res?.data?.erro || 'Erro ao registrar saida', 'error');
+            }
+        });
+
+        await carregarDados();
+        renderizarPosicoes();
+    })();
+    </script>
+</body>
+</html>

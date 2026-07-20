@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Produtos - Box Estoque</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="voltar">&larr; Voltar</a>
+        <h1>Produtos</h1>
+        <span class="sub">Cadastrar e gerenciar</span>
+    </div>
+    <div class="container">
+        <div class="card" style="max-width:540px;margin:0 auto;">
+            <h2 id="form-title">Novo Produto</h2>
+            <div id="alerta"></div>
+            <form id="form-produto">
+                <input type="hidden" id="edit-id" value="">
+                <div class="form-group"><label>Nome do Produto</label><input type="text" id="nome" required placeholder="Ex: Cafe Arabica" maxlength="200"></div>
+                <div class="form-group"><label>Codigo</label><input type="text" id="codigo" required placeholder="Ex: CAF-001" maxlength="50"></div>
+                <div class="form-group"><label>Descricao</label><textarea id="descricao" rows="3" placeholder="Opcional"></textarea></div>
+                <div class="form-group">
+                    <label>Cor</label>
+                    <div class="form-row inline" style="gap:12px;">
+                        <input type="color" id="cor" value="#667eea" style="width:54px;height:44px;padding:3px;cursor:pointer;border-radius:var(--radius-xs);">
+                        <span id="cor-label" style="font-size:13px;color:var(--text-muted);align-self:center;">Clique para alterar</span>
+                    </div>
+                </div>
+                <div style="display:flex;gap:10px;">
+                    <button type="submit" class="btn btn-primary btn-block" id="btn-submit">Cadastrar Produto</button>
+                    <button type="button" class="btn btn-outline" id="btn-cancelar" style="display:none;">Cancelar</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="card" style="max-width:700px;margin:20px auto 0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <h2 style="margin:0;">Produtos Cadastrados</h2>
+                <span id="total-produtos" style="font-size:12px;color:var(--text-muted);font-weight:600;"></span>
+            </div>
+            <div id="lista-produtos"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-delete">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Confirmar Exclusao</h3>
+                <button class="modal-close" onclick="App.hideModal('modal-delete')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:14px;color:var(--text-secondary);">Tem certeza que deseja excluir o produto <strong id="delete-nome"></strong>?</p>
+                <p style="font-size:12px;color:var(--text-muted);margin-top:8px;">Esta acao nao pode ser desfeita.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline btn-sm" onclick="App.hideModal('modal-delete')">Cancelar</button>
+                <button class="btn btn-danger btn-sm" id="btn-confirm-delete">Excluir</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/js/app.js"></script>
+    <script>
+    (async function() {
+        const usuario = await App.checkAuth();
+        if (!usuario) return;
+
+        const corInput = document.getElementById('cor');
+        corInput.addEventListener('input', () => { document.getElementById('cor-label').textContent = corInput.value; });
+
+        document.getElementById('btn-cancelar').addEventListener('click', () => {
+            document.getElementById('edit-id').value = '';
+            document.getElementById('form-title').textContent = 'Novo Produto';
+            document.getElementById('btn-submit').textContent = 'Cadastrar Produto';
+            document.getElementById('btn-cancelar').style.display = 'none';
+            document.getElementById('form-produto').reset();
+            corInput.value = '#667eea';
+            document.getElementById('cor-label').textContent = '#667eea';
+        });
+
+        document.getElementById('form-produto').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const editId = document.getElementById('edit-id').value;
+            const data = {
+                nome: document.getElementById('nome').value.trim(),
+                codigo: document.getElementById('codigo').value.trim(),
+                descricao: document.getElementById('descricao').value.trim(),
+                cor: corInput.value
+            };
+
+            let res;
+            if (editId) {
+                data.id = parseInt(editId);
+                data.ativo = 1;
+                res = await App.apiPut('api/produtos', data);
+            } else {
+                res = await App.apiPost('api/produtos', data);
+            }
+
+            if (res && res.ok) {
+                App.toast(editId ? 'Produto atualizado!' : 'Produto cadastrado!', 'success');
+                document.getElementById('edit-id').value = '';
+                document.getElementById('form-title').textContent = 'Novo Produto';
+                document.getElementById('btn-submit').textContent = 'Cadastrar Produto';
+                document.getElementById('btn-cancelar').style.display = 'none';
+                document.getElementById('form-produto').reset();
+                corInput.value = '#667eea';
+                document.getElementById('cor-label').textContent = '#667eea';
+                carregarProdutos();
+            } else {
+                App.toast(res?.data?.erro || 'Erro ao salvar produto', 'error');
+            }
+        });
+
+        window.editarProduto = function(p) {
+            document.getElementById('edit-id').value = p.id;
+            document.getElementById('form-title').textContent = 'Editar Produto';
+            document.getElementById('btn-submit').textContent = 'Salvar Alteracoes';
+            document.getElementById('btn-cancelar').style.display = '';
+            document.getElementById('nome').value = p.nome;
+            document.getElementById('codigo').value = p.codigo;
+            document.getElementById('descricao').value = p.descricao || '';
+            corInput.value = p.cor || '#667eea';
+            document.getElementById('cor-label').textContent = p.cor || '#667eea';
+            document.getElementById('form-produto').scrollIntoView({ behavior: 'smooth' });
+        };
+
+        window.confirmarExclusao = function(id, nome) {
+            document.getElementById('delete-nome').textContent = nome;
+            document.getElementById('btn-confirm-delete').onclick = async () => {
+                App.hideModal('modal-delete');
+                const res = await App.apiDelete(`api/produtos?id=${id}`);
+                if (res && res.ok) {
+                    App.toast('Produto excluido!', 'success');
+                    carregarProdutos();
+                } else {
+                    App.toast(res?.data?.erro || 'Erro ao excluir', 'error');
+                }
+            };
+            App.showModal('modal-delete');
+        };
+
+        async function carregarProdutos() {
+            const div = document.getElementById('lista-produtos');
+            try {
+                const produtos = await App.carregarProdutos();
+                document.getElementById('total-produtos').textContent = produtos.length + ' produto(s)';
+                if (!produtos.length) {
+                    div.innerHTML = '<p style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px;">Nenhum produto cadastrado.</p>';
+                    return;
+                }
+                div.innerHTML = '<div class="item-list">' + produtos.map(x =>
+                    `<div>
+                        <span class="item-dot" style="background:${App.escapeHtml(x.cor)}"></span>
+                        <div class="item-info"><strong>${App.escapeHtml(x.nome)}</strong><span>${App.escapeHtml(x.codigo)}</span></div>
+                        <div class="table-actions">
+                            <button class="btn btn-ghost btn-xs" onclick='editarProduto(${JSON.stringify(x).replace(/'/g,"&#39;")})' title="Editar">&#9998;</button>
+                            ${usuario.perfil === 'admin' ? `<button class="btn btn-ghost btn-xs" style="color:var(--danger);" onclick="confirmarExclusao(${x.id},'${App.escapeHtml(x.nome).replace(/'/g,"\\'")}')" title="Excluir">&#10005;</button>` : ''}
+                        </div>
+                    </div>`
+                ).join('') + '</div>';
+            } catch(e) {
+                div.innerHTML = '<p style="color:var(--danger);font-size:13px;">Erro ao carregar produtos</p>';
+            }
+        }
+
+        await carregarProdutos();
+    })();
+    </script>
+</body>
+</html>

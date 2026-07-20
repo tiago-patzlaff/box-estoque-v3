@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Registrar Entrada</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="voltar">&larr; Voltar</a>
+        <h1>Registrar Entrada</h1>
+        <span class="sub">Adicionar pallets</span>
+    </div>
+    <div class="container">
+        <div class="card" style="max-width:540px;margin:0 auto;">
+            <h2>Nova Entrada</h2>
+            <div id="alerta"></div>
+            <div class="form-group pedido-search-group">
+                <label>Pedido / PO (IPU)</label>
+                <div class="form-row" style="gap:10px;">
+                    <input type="text" id="busca-pedido" placeholder="N. Pedido ou N. PO..." style="flex:1;">
+                    <select id="busca-mes" style="flex:0 0 auto;width:auto;padding:12px 10px;">
+                    </select>
+                    <button type="button" class="btn btn-outline" id="btn-buscar-pedido" style="flex-shrink:0;">Buscar</button>
+                </div>
+                <div id="pedido-resultado" class="pedido-resultado" style="display:none;"></div>
+            </div>
+            <hr class="divider">
+            <div id="nao-encontrado" class="nao-encontrado" style="display:none;"></div>
+            <form id="form-entrada">
+                <div class="form-group">
+                    <label>Posicao (Fileira &middot; Altura)</label>
+                    <div class="form-row" style="gap:10px;">
+                        <input type="number" id="fileira" min="1" max="24" required placeholder="Fileira" style="flex:1;">
+                        <input type="number" id="altura" min="1" max="5" required placeholder="Altura" style="flex:1;">
+                        <button type="button" class="btn btn-outline qr-btn" id="btn-scan" style="flex-shrink:0;padding:10px 14px;" title="Ler QR Code">&#128247;</button>
+                    </div>
+                    <div id="capacidade-info" class="capacidade-info" style="display:none;"></div>
+                </div>
+                <div id="produto-badge" class="produto-badge"></div>
+                <div id="produto-area">
+                    <div class="form-group">
+                        <label>Produto</label>
+                        <input type="text" id="filtro-produto" placeholder="Digite para buscar...">
+                        <select id="produto_id" required style="margin-top:6px;"><option value="">Selecione um produto...</option></select>
+                    </div>
+                </div>
+                <input type="hidden" id="produto_id_hidden" value="">
+                <div class="form-group">
+                    <label>Quantidade (max 15 por posicao)</label>
+                    <input type="number" id="quantidade" min="1" max="15" required placeholder="Ex: 10">
+                </div>
+                <div class="form-group">
+                    <label>Observacao</label>
+                    <textarea id="observacao" rows="2" placeholder="Opcional (max 500 caracteres)"></textarea>
+                </div>
+                <button type="submit" class="btn btn-success btn-block" id="btn-submit">Registrar Entrada</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="qr-modal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Escaneie o QR Code da posicao</h3>
+                <button class="modal-close" id="qr-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="reader"></div>
+                <div id="qr-status" class="qr-result pending" style="display:none;"></div>
+                <button class="btn btn-outline btn-block" id="qr-cancel" style="margin-top:10px;">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/js/app.js"></script>
+    <script>
+    (async function() {
+        const usuario = await App.checkAuth();
+        if (!usuario) return;
+        if (usuario.perfil === 'visualizador') { window.location.href = 'index.html'; return; }
+
+        const MAX_PALLET = 15;
+        let html5QrCode = null;
+        let scannerRunning = false;
+        let todosProdutos = [];
+        let qrSetProduto = false;
+
+        async function checarCapacidade() {
+            const f = parseInt(document.getElementById('fileira').value);
+            const a = parseInt(document.getElementById('altura').value);
+            const el = document.getElementById('capacidade-info');
+            const qtdInput = document.getElementById('quantidade');
+
+            if (!f || !a || f < 1 || f > 24 || a < 1 || a > 5) {
+                el.style.display = 'none';
+                qtdInput.max = MAX_PALLET;
+                return;
+            }
+
+            const res = await App.apiGet(`api/posicoes?fileira=${f}&altura=${a}`);
+            if (!res || !res.ok) { el.style.display = 'none'; return; }
+
+            const pos = res.data.posicao;
+            const ocupados = pos ? pos.quantidade : 0;
+            const produtos = pos ? (pos.produtos || []) : [];
+            const vagas = MAX_PALLET - ocupados;
+            const pct = (ocupados / MAX_PALLET) * 100;
+
+            let cls, corBar, label, detalhe;
+            if (vagas <= 0) {
+                cls = 'lotado'; corBar = '#ff4444';
+                label = '0';
+                detalhe = 'Lotada - ' + ocupados + ' de ' + MAX_PALLET + ' ocupados';
+            } else if (vagas <= 3) {
+                cls = 'pouco'; corBar = '#ffa502';
+                label = vagas;
+                detalhe = vagas + ' vaga' + (vagas > 1 ? 's' : '') + ' - ' + ocupados + ' de ' + MAX_PALLET + ' ocupados';
+            } else {
+                cls = 'livre'; corBar = '#00d68f';
+                label = vagas;
+                detalhe = vagas + ' vagas - ' + ocupados + ' de ' + MAX_PALLET + ' ocupados';
+            }
+
+            qtdInput.max = vagas > 0 ? vagas : 0;
+            if (parseInt(qtdInput.value) > vagas) qtdInput.value = vagas > 0 ? vagas : 0;
+
+            el.className = 'capacidade-info ' + cls;
+            el.innerHTML = `<div class="cap-top"><div class="cap-numero">${label}</div><div class="cap-detalhe">${detalhe}</div></div>` +
+                `<div class="cap-bar"><div class="cap-bar-fill" style="width:${pct}%;background:${corBar};"></div></div>`;
+            el.style.display = 'block';
+        }
+
+        document.getElementById('fileira').addEventListener('input', checarCapacidade);
+        document.getElementById('altura').addEventListener('input', checarCapacidade);
+
+        async function carregarProdutos() {
+            todosProdutos = await App.carregarProdutos();
+            renderizarProdutos();
+        }
+
+        function renderizarProdutos(filtro) {
+            const sel = document.getElementById('produto_id');
+            const f = (filtro || '').toLowerCase().trim();
+            const filtrados = f ? todosProdutos.filter(p =>
+                p.nome.toLowerCase().includes(f) || p.codigo.toLowerCase().includes(f)
+            ) : todosProdutos;
+            sel.innerHTML = '<option value="">Selecione um produto...</option>' +
+                filtrados.map(x => `<option value="${x.id}">${App.escapeHtml(x.nome)} (${App.escapeHtml(x.codigo)})</option>`).join('');
+        }
+
+        document.getElementById('filtro-produto').addEventListener('input', function() {
+            renderizarProdutos(this.value);
+        });
+
+        function mostrarProdutoQR(produto) {
+            qrSetProduto = true;
+            document.getElementById('produto-area').style.display = 'none';
+            document.getElementById('produto_id').required = false;
+            document.getElementById('produto_id_hidden').value = produto.produto_id;
+            const badge = document.getElementById('produto-badge');
+            badge.style.display = 'block';
+            badge.innerHTML = `&#10003; ${App.escapeHtml(produto.produto_nome)} (${App.escapeHtml(produto.produto_codigo || '')}) &middot; ${produto.quantidade} pallets atuais <span class="edit-link" onclick="mostrarProdutoManual()">[alterar]</span>`;
+        }
+
+        function mostrarProdutoManual() {
+            qrSetProduto = false;
+            document.getElementById('produto-area').style.display = 'block';
+            document.getElementById('produto_id').required = true;
+            document.getElementById('produto_id_hidden').value = '';
+            document.getElementById('produto-badge').style.display = 'none';
+        }
+
+        async function carregarProdutoDaPosicao(f, a, fromQR) {
+            const res = await App.apiGet(`api/posicoes?fileira=${f}&altura=${a}`);
+            if (res && res.ok && res.data.posicao && res.data.posicao.produtos && res.data.posicao.produtos.length > 0) {
+                const produtos = res.data.posicao.produtos;
+                const primeiro = produtos[0];
+                const sel = document.getElementById('produto_id');
+                for (let opt of sel.options) {
+                    if (opt.value == primeiro.produto_id) { opt.selected = true; break; }
+                }
+                if (fromQR) mostrarProdutoQR({
+                    produto_id: primeiro.produto_id,
+                    produto_nome: primeiro.produto_nome,
+                    produto_codigo: primeiro.produto_codigo,
+                    quantidade: res.data.posicao.quantidade
+                });
+                return primeiro;
+            }
+            mostrarProdutoManual();
+            return null;
+        }
+
+        async function autoCadastrarProduto(texto) {
+            const matchPedido = texto.match(/(?:PEDIDO|pedido)\s*(\d+)/);
+            let codigo = matchPedido ? matchPedido[1] : texto.substring(0, 10).replace(/\s/g, '_');
+            const existentes = await App.carregarProdutos();
+            todosProdutos = existentes;
+            const codigosExistentes = new Set(existentes.map(p => p.codigo));
+            if (codigosExistentes.has(codigo)) codigo += '_' + Date.now().toString(36);
+            const cor = App.gerarCorUnica(texto, codigo);
+            const res = await App.apiPost('api/produtos', { nome: texto, codigo, descricao: '', cor });
+            if (res && res.ok) {
+                todosProdutos.push({ id: res.data.id, nome: texto, codigo, cor });
+                renderizarProdutos();
+                return res.data.id;
+            }
+            return null;
+        }
+
+        async function abrirScanner() {
+            const modal = document.getElementById('qr-modal');
+            const status = document.getElementById('qr-status');
+            modal.classList.add('open');
+            status.style.display = 'none';
+            try {
+                html5QrCode = new Html5Qrcode("reader");
+                scannerRunning = true;
+                await html5QrCode.start(
+                    { facingMode: "environment" },
+                    { fps: 10, qrbox: { width: 220, height: 220 } },
+                    onScanSuccess, () => {}
+                );
+            } catch(e) {
+                status.style.display = 'block';
+                status.className = 'qr-result error';
+                status.textContent = 'Erro ao acessar camera: ' + (e.message || 'Use HTTPS ou localhost');
+            }
+        }
+
+        async function onScanSuccess(decodedText) {
+            if (!scannerRunning) return;
+            const match = decodedText.match(/^ESTOQUE:POS:F(\d+):A(\d+)$/i);
+            if (match) {
+                const f = parseInt(match[1]), a = parseInt(match[2]);
+                if (f >= 1 && f <= 24 && a >= 1 && a <= 5) {
+                    document.getElementById('fileira').value = f;
+                    document.getElementById('altura').value = a;
+                    fecharScanner(true);
+                    checarCapacidade();
+                    await carregarProdutoDaPosicao(f, a, true);
+                    return;
+                }
+            }
+            fecharScanner(true);
+            if (!todosProdutos.some(p => p.nome.toLowerCase() === decodedText.toLowerCase() || p.codigo.toLowerCase() === decodedText.toLowerCase())) {
+                await autoCadastrarProduto(decodedText);
+            }
+            mostrarProdutoManual();
+            document.getElementById('filtro-produto').value = decodedText;
+            renderizarProdutos(decodedText);
+            document.getElementById('filtro-produto').focus();
+        }
+
+        function fecharScanner(success) {
+            if (html5QrCode && scannerRunning) { html5QrCode.stop().catch(() => {}); scannerRunning = false; }
+            document.getElementById('qr-modal').classList.remove('open');
+            if (success) {
+                App.toast('Posicao escaneada com sucesso!', 'success');
+            }
+        }
+
+        document.getElementById('btn-scan').addEventListener('click', abrirScanner);
+        document.getElementById('qr-close').addEventListener('click', () => fecharScanner(false));
+        document.getElementById('qr-cancel').addEventListener('click', () => fecharScanner(false));
+
+        document.getElementById('form-entrada').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const alerta = document.getElementById('alerta');
+            const pid = qrSetProduto
+                ? parseInt(document.getElementById('produto_id_hidden').value)
+                : parseInt(document.getElementById('produto_id').value);
+            if (!pid) {
+                App.toast('Selecione um produto', 'error');
+                return;
+            }
+            const data = {
+                tipo: 'entrada',
+                produto_id: pid,
+                fileira: parseInt(document.getElementById('fileira').value),
+                altura: parseInt(document.getElementById('altura').value),
+                quantidade: parseInt(document.getElementById('quantidade').value),
+                observacao: document.getElementById('observacao').value
+            };
+            const btn = document.getElementById('btn-submit');
+            btn.disabled = true;
+            const res = await App.apiPost('api/movimentacao', data);
+            btn.disabled = false;
+            if (res && res.ok) {
+                App.toast('Entrada registrada com sucesso!', 'success');
+                document.getElementById('form-entrada').reset();
+                document.getElementById('capacidade-info').style.display = 'none';
+                mostrarProdutoManual();
+            } else {
+                App.toast(res?.data?.erro || 'Erro ao registrar entrada', 'error');
+            }
+        });
+
+        function preencherMesSelect() {
+            const sel = document.getElementById('busca-mes');
+            const now = new Date();
+            for (let i = 0; i < 3; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const val = String(d.getMonth() + 1).padStart(2, '0') + d.getFullYear();
+                const label = String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = label;
+                sel.appendChild(opt);
+            }
+        }
+
+        async function buscarPedidos() {
+            const input = document.getElementById('busca-pedido');
+            const mesAno = document.getElementById('busca-mes').value;
+            const resultado = document.getElementById('pedido-resultado');
+            const valor = input.value.trim();
+
+            if (!valor) {
+                App.toast('Digite um numero de pedido ou PO', 'warning');
+                input.focus();
+                return;
+            }
+
+            resultado.style.display = 'block';
+            resultado.innerHTML = '<div class="pedido-loading">Buscando pedidos...</div>';
+
+            let url = 'api/pedidos?mesAno=' + encodeURIComponent(mesAno);
+
+            const soNumeros = /^\d+$/.test(valor);
+            if (soNumeros) {
+                url += '&pedidoExp=' + encodeURIComponent(valor) + '&po=%20';
+            } else {
+                url += '&pedidoExp=0&po=' + encodeURIComponent(valor);
+            }
+
+            const res = await App.apiGet(url);
+
+            if (!res || !res.ok) {
+                resultado.innerHTML = '<div class="pedido-vazio">' + App.escapeHtml(res?.data?.erro || 'Erro ao buscar pedidos') + '</div>';
+                return;
+            }
+
+            const pedidos = res.data.pedidos || [];
+            if (pedidos.length === 0) {
+                resultado.innerHTML = '<div class="pedido-vazio">Nenhum pedido encontrado para "' + App.escapeHtml(valor) + '"</div>';
+                return;
+            }
+
+            resultado.innerHTML = pedidos.map((p, i) =>
+                `<div class="pedido-item" data-idx="${i}">` +
+                    `<div class="pedido-num">#${App.escapeHtml(p.numped)} &middot; PO: ${App.escapeHtml(p.usu_pedcli)}</div>` +
+                    `<div class="pedido-produto">${App.escapeHtml(p.produto)}</div>` +
+                    `<div class="pedido-meta">` +
+                        `<span>${App.escapeHtml(p.bags)} bags</span>` +
+                        `<span>Prev: ${App.escapeHtml(p.datprv)}</span>` +
+                        `<span>Cont: ${App.escapeHtml(p.usu_nconteiner)}</span>` +
+                    `</div>` +
+                `</div>`
+            ).join('');
+
+            window._pedidosResultados = pedidos;
+
+            resultado.querySelectorAll('.pedido-item').forEach(item => {
+                item.addEventListener('click', async () => {
+                    const idx = parseInt(item.dataset.idx);
+                    const pedido = window._pedidosResultados[idx];
+                    await selecionarPedido(pedido);
+                });
+            });
+        }
+
+        async function selecionarPedido(pedido) {
+            const resultado = document.getElementById('pedido-resultado');
+            resultado.style.display = 'none';
+
+            const nomeProduto = pedido.produto;
+            let produto = todosProdutos.find(p =>
+                p.nome.toLowerCase() === nomeProduto.toLowerCase() ||
+                p.codigo.toLowerCase() === pedido.numped.toLowerCase()
+            );
+
+            if (!produto) {
+                App.toast('Cadastrando produto automaticamente...', 'info');
+                const pid = await autoCadastrarProduto(nomeProduto);
+                if (pid) {
+                    await carregarProdutos();
+                    produto = todosProdutos.find(p => p.id === pid);
+                }
+            }
+
+            if (produto) {
+                qrSetProduto = true;
+                document.getElementById('produto-area').style.display = 'none';
+                document.getElementById('produto_id').required = false;
+                document.getElementById('produto_id_hidden').value = produto.id;
+                const badge = document.getElementById('produto-badge');
+                badge.style.display = 'block';
+                badge.innerHTML = '&#10003; ' + App.escapeHtml(produto.nome) +
+                    ' (Pedido #' + App.escapeHtml(pedido.numped) + ' &middot; PO: ' + App.escapeHtml(pedido.usu_pedcli) + ')' +
+                    ' <span class="edit-link" onclick="mostrarProdutoManual()">[alterar]</span>';
+
+                const bags = parseInt(pedido.bags);
+                if (bags > 0) {
+                    document.getElementById('quantidade').value = Math.min(bags, 15);
+                    document.getElementById('quantidade').max = Math.min(bags, 15);
+                }
+            }
+
+            App.toast('Pedido #' + pedido.numped + ' selecionado!', 'success');
+        }
+
+        preencherMesSelect();
+        document.getElementById('btn-buscar-pedido').addEventListener('click', buscarPedidos);
+        document.getElementById('busca-pedido').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); buscarPedidos(); }
+        });
+
+        carregarProdutos();
+        mostrarProdutoManual();
+    })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Inventario</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="voltar">&larr; Voltar</a>
+        <h1>Inventario</h1>
+        <span class="sub">Estoque completo</span>
+    </div>
+    <div class="container">
+        <div class="card">
+            <div class="filter-bar">
+                <div class="filter-item">
+                    <label>Fileira</label>
+                    <select id="filtro-fileira"><option value="">Todas</option></select>
+                </div>
+                <div class="filter-item">
+                    <label>Status</label>
+                    <select id="filtro-status">
+                        <option value="">Todos</option>
+                        <option value="ok">Ok (&ge;10)</option>
+                        <option value="warn">Atencao (4-9)</option>
+                        <option value="low">Critico (1-3)</option>
+                        <option value="vazia">Vazia</option>
+                    </select>
+                </div>
+                <div class="filter-item">
+                    <label>Produto</label>
+                    <input type="text" id="filtro-produto" placeholder="Nome ou codigo...">
+                </div>
+                <div style="display:flex;align-items:flex-end;gap:8px;">
+                    <button class="btn btn-outline btn-sm" id="btn-limpar">Limpar</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="resumo-grid" style="grid-template-columns:repeat(3,1fr);">
+            <div class="resumo-item"><div class="valor" id="inv-ocupadas">-</div><div class="rotulo">Ocupadas</div></div>
+            <div class="resumo-item"><div class="valor" id="inv-produtos">-</div><div class="rotulo">Produtos</div></div>
+            <div class="resumo-item"><div class="valor" id="inv-pallets">-</div><div class="rotulo">Pallets</div></div>
+        </div>
+
+        <div class="export-bar">
+            <button class="btn btn-outline btn-xs" onclick="exportarCsv()">&#128229; Exportar CSV</button>
+        </div>
+
+        <div class="card" style="overflow-x:auto;">
+            <table class="inventory-table" id="tabela-inventario">
+                <thead><tr><th>Posicao</th><th>Produto</th><th>Codigo</th><th>Cor</th><th>Pallets</th><th>Status</th></tr></thead>
+                <tbody id="corpo-tabela">
+                    <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted);">Carregando...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination" id="pagination"></div>
+    </div>
+    <script src="assets/js/app.js"></script>
+    <script>
+    (async function() {
+        const usuario = await App.checkAuth();
+        if (!usuario) return;
+
+        let todasPosicoes = [];
+        let paginaAtual = 1;
+        const POR_PAGINA = 25;
+
+        async function carregarDados() {
+            const data = await App.carregarPosicoes();
+            const raw = data.posicoes || [];
+            todasPosicoes = [];
+            raw.forEach(p => {
+                const produtos = p.produtos || [];
+                if (produtos.length === 0) {
+                    todasPosicoes.push({ fileira: p.fileira, altura: p.altura, quantidade: 0, produto_nome: null, produto_codigo: null, produto_cor: null, produto_id: null });
+                } else {
+                    produtos.forEach(pr => {
+                        todasPosicoes.push({
+                            fileira: p.fileira, altura: p.altura,
+                            quantidade: pr.quantidade,
+                            produto_nome: pr.produto_nome,
+                            produto_codigo: pr.produto_codigo,
+                            produto_cor: pr.produto_cor,
+                            produto_id: pr.produto_id
+                        });
+                    });
+                }
+            });
+            const fileiras = [...new Set(todasPosicoes.map(p => p.fileira))].sort((a,b) => a-b);
+            const sel = document.getElementById('filtro-fileira');
+            sel.innerHTML = '<option value="">Todas</option>' + fileiras.map(f => `<option value="${f}">${f}</option>`).join('');
+            aplicarFiltros();
+        }
+
+        function statusTag(qtd) {
+            if (!qtd) return '<span class="status-tag vazia">Vazia</span>';
+            if (qtd >= 10) return '<span class="status-tag ok">Ok</span>';
+            if (qtd >= 4) return '<span class="status-tag warn">Atencao</span>';
+            return '<span class="status-tag low">Critico</span>';
+        }
+
+        function aplicarFiltros() {
+            const fFileira = document.getElementById('filtro-fileira').value;
+            const fStatus = document.getElementById('filtro-status').value;
+            const fProduto = document.getElementById('filtro-produto').value.toLowerCase().trim();
+
+            let filtradas = todasPosicoes;
+            if (fFileira) filtradas = filtradas.filter(p => p.fileira == fFileira);
+            if (fStatus) {
+                filtradas = filtradas.filter(p => {
+                    const qtd = p.quantidade || 0;
+                    if (fStatus === 'vazia') return qtd === 0;
+                    if (fStatus === 'low') return qtd >= 1 && qtd <= 3;
+                    if (fStatus === 'warn') return qtd >= 4 && qtd <= 9;
+                    if (fStatus === 'ok') return qtd >= 10;
+                    return true;
+                });
+            }
+            if (fProduto) {
+                filtradas = filtradas.filter(p => {
+                    const nome = (p.produto_nome || '').toLowerCase();
+                    const codigo = (p.produto_codigo || '').toLowerCase();
+                    return nome.includes(fProduto) || codigo.includes(fProduto);
+                });
+            }
+
+            const total = filtradas.length;
+            const totalPaginas = Math.ceil(total / POR_PAGINA) || 1;
+            if (paginaAtual > totalPaginas) paginaAtual = totalPaginas;
+            const inicio = (paginaAtual - 1) * POR_PAGINA;
+            const paginadas = filtradas.slice(inicio, inicio + POR_PAGINA);
+
+            const tbody = document.getElementById('corpo-tabela');
+            if (paginadas.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted);">Nenhuma posicao encontrada</td></tr>';
+            } else {
+                tbody.innerHTML = paginadas.map(p => {
+                    const qtd = p.quantidade || 0;
+                    const has = p.produto_nome != null && qtd > 0;
+                    return `<tr>
+                        <td class="cell-pos">F${p.fileira} &middot; A${p.altura}</td>
+                        <td>${has ? App.escapeHtml(p.produto_nome) : '<span style="color:var(--text-muted);">&mdash;</span>'}</td>
+                        <td>${has ? App.escapeHtml(p.produto_codigo || '&mdash;') : '<span style="color:var(--text-muted);">&mdash;</span>'}</td>
+                        <td>${has ? `<span class="color-preview" style="background:${App.escapeHtml(p.produto_cor)};"></span>` : ''}</td>
+                        <td class="cell-qtd">${has ? qtd : '<span style="color:var(--text-muted);">0</span>'}</td>
+                        <td>${has ? statusTag(qtd) : statusTag(0)}</td>
+                    </tr>`;
+                }).join('');
+            }
+
+            const ocupadas = filtradas.filter(p => p.quantidade > 0).length;
+            const produtos = new Set(filtradas.filter(p => p.produto_nome).map(p => p.produto_nome)).size;
+            const pallets = filtradas.reduce((s, p) => s + (p.quantidade || 0), 0);
+            document.getElementById('inv-ocupadas').textContent = ocupadas;
+            document.getElementById('inv-produtos').textContent = produtos;
+            document.getElementById('inv-pallets').textContent = pallets;
+
+            renderPagination(totalPaginas, total);
+        }
+
+        function renderPagination(totalPaginas, total) {
+            const div = document.getElementById('pagination');
+            if (totalPaginas <= 1) { div.innerHTML = ''; return; }
+            let html = `<button ${paginaAtual <= 1 ? 'disabled' : ''} onclick="irPagina(${paginaAtual - 1})">&laquo;</button>`;
+            for (let i = 1; i <= totalPaginas; i++) {
+                if (totalPaginas > 7 && i > 3 && i < totalPaginas - 2 && Math.abs(i - paginaAtual) > 1) {
+                    if (i === 4 || i === totalPaginas - 3) html += '<span class="page-info">...</span>';
+                    continue;
+                }
+                html += `<button class="${i === paginaAtual ? 'active' : ''}" onclick="irPagina(${i})">${i}</button>`;
+            }
+            html += `<button ${paginaAtual >= totalPaginas ? 'disabled' : ''} onclick="irPagina(${paginaAtual + 1})">&raquo;</button>`;
+            html += `<span class="page-info">${total} registros</span>`;
+            div.innerHTML = html;
+        }
+
+        window.irPagina = function(p) { paginaAtual = p; aplicarFiltros(); window.scrollTo({top: 0, behavior: 'smooth'}); };
+
+        window.exportarCsv = function() {
+            const headers = ['Posicao', 'Fileira', 'Altura', 'Produto', 'Codigo', 'Pallets', 'Status'];
+            const rows = todasPosicoes.map(p => {
+                const qtd = p.quantidade || 0;
+                let status = 'Vazia';
+                if (qtd >= 10) status = 'Ok';
+                else if (qtd >= 4) status = 'Atencao';
+                else if (qtd > 0) status = 'Critico';
+                return [`F${p.fileira} A${p.altura}`, p.fileira, p.altura, p.produto_nome || '', p.produto_codigo || '', qtd, status];
+            });
+            App.generateCsv(headers, rows, `inventario_${new Date().toISOString().slice(0,10)}.csv`);
+            App.toast('CSV exportado com sucesso!', 'success');
+        };
+
+        document.getElementById('filtro-fileira').addEventListener('change', () => { paginaAtual = 1; aplicarFiltros(); });
+        document.getElementById('filtro-status').addEventListener('change', () => { paginaAtual = 1; aplicarFiltros(); });
+        document.getElementById('filtro-produto').addEventListener('input', () => { paginaAtual = 1; aplicarFiltros(); });
+        document.getElementById('btn-limpar').addEventListener('click', () => {
+            document.getElementById('filtro-fileira').value = '';
+            document.getElementById('filtro-status').value = '';
+            document.getElementById('filtro-produto').value = '';
+            paginaAtual = 1;
+            aplicarFiltros();
+        });
+
+        await carregarDados();
+    })();
+    </script>
+</body>
+</html>

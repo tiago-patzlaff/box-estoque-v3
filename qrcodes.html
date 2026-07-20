@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>QR Codes</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        @media print {
+            body * { visibility: hidden; }
+            #print-area, #print-area * { visibility: visible; }
+            #print-area { position: absolute; left: 0; top: 0; width: 100%; }
+            .no-print { display: none !important; }
+            .qr-stickers { grid-template-columns: repeat(5, 1fr) !important; gap: 8px !important; }
+            .qr-sticker { break-inside: avoid; box-shadow: none !important; border: 1px solid #ddd !important; background: #fff !important; }
+            @page { margin: 10mm; }
+        }
+        .qr-stickers { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
+        .qr-sticker {
+            background: var(--surface-solid); border-radius: var(--radius-sm); padding: 12px;
+            text-align: center; border: 1px solid var(--border);
+        }
+        .qr-sticker canvas, .qr-sticker img { display: block; margin: 0 auto; max-width: 100%; height: auto; border-radius: 4px; }
+        .qr-sticker .label { font-size: 11px; font-weight: 700; color: var(--text); margin-top: 8px; }
+        .qr-sticker .sub { font-size: 9px; color: var(--text-muted); }
+    </style>
+</head>
+<body>
+    <div class="header no-print">
+        <a href="index.html" class="voltar">&larr; Voltar</a>
+        <h1>QR Codes</h1>
+        <span class="sub">Etiquetas para impressao</span>
+    </div>
+    <div class="container">
+        <div class="card no-print">
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button class="btn btn-primary" onclick="window.print()">&#128424; Imprimir QR Codes</button>
+                <button class="btn btn-outline" id="btn-sync" onclick="sincronizar()">Atualizar</button>
+            </div>
+            <p style="font-size:13px;color:var(--text-muted);margin:12px 0 0;">QR Codes para todas as 120 posicoes (F1&middot;A1 a F24&middot;A5). Cole nos batentes para leitura rapida.</p>
+        </div>
+        <div class="card" id="print-area">
+            <h2>Box Estoque &middot; QR Codes</h2>
+            <div class="qr-stickers" id="qr-grid">
+                <div style="text-align:center;padding:40px;color:var(--text-muted);" id="qr-loading">Gerando QR Codes...</div>
+            </div>
+        </div>
+    </div>
+    <script src="assets/js/app.js"></script>
+    <script>
+    (async function() {
+        await App.checkAuth();
+
+        function gerarQRCode(container, data, label) {
+            container.innerHTML = '';
+            const div = document.createElement('div');
+            div.style.display = 'inline-block';
+            container.appendChild(div);
+            try {
+                new QRCode(div, { text: data, width: 100, height: 100, colorDark: '#f0f0ff', colorLight: '#16162e', correctLevel: QRCode.CorrectLevel.M });
+            } catch(e) {
+                container.innerHTML = '<span style="font-size:10px;color:var(--danger);">Erro</span>';
+            }
+            const lbl = document.createElement('div');
+            lbl.className = 'label';
+            lbl.textContent = label;
+            container.appendChild(lbl);
+            const sub = document.createElement('div');
+            sub.className = 'sub';
+            sub.textContent = data;
+            container.appendChild(sub);
+        }
+
+        function gerarTodos() {
+            const grid = document.getElementById('qr-grid');
+            grid.innerHTML = '';
+            const fragment = document.createDocumentFragment();
+            for (let f = 1; f <= 24; f++) {
+                for (let a = 1; a <= 5; a++) {
+                    const sticker = document.createElement('div');
+                    sticker.className = 'qr-sticker';
+                    sticker.id = `qr-f${f}-a${a}`;
+                    fragment.appendChild(sticker);
+                }
+            }
+            grid.appendChild(fragment);
+            requestAnimationFrame(() => {
+                for (let f = 1; f <= 24; f++) {
+                    for (let a = 1; a <= 5; a++) {
+                        const container = document.getElementById(`qr-f${f}-a${a}`);
+                        if (container) gerarQRCode(container, `ESTOQUE:POS:F${f}:A${a}`, `F${f} \u00B7 A${a}`);
+                    }
+                }
+            });
+        }
+
+        window.sincronizar = async function() {
+            const btn = document.getElementById('btn-sync');
+            btn.textContent = 'Sincronizando...'; btn.disabled = true;
+            await App.apiGet('api/posicoes');
+            btn.textContent = 'Sincronizado!'; btn.disabled = false;
+            setTimeout(() => { btn.textContent = 'Atualizar'; }, 2000);
+        };
+
+        gerarTodos();
+    })();
+    </script>
+</body>
+</html>

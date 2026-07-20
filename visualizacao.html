@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Visualizacao - Box Estoque</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="voltar">&larr; Voltar</a>
+        <h1>Visualizacao do Box</h1>
+        <span class="sub">Grade interativa 24x5</span>
+    </div>
+    <div class="container">
+        <div class="card card-rack">
+            <div class="rack-controls">
+                <div class="rc-input"><input type="text" id="busca-produto" placeholder="Buscar produto ou codigo..." autocomplete="off"></div>
+                <div class="rc-select"><select id="select-produto"><option value="">Carregando...</option></select></div>
+                <button class="btn btn-primary btn-sm" id="btn-busca">Buscar</button>
+                <button class="btn btn-outline btn-sm" id="btn-limpar-vis">Limpar</button>
+            </div>
+            <div class="rack-wrap">
+                <table class="rack-table" id="rack-table">
+                    <thead><tr><th class="rc-corner"></th><th class="rc-h fileira" colspan="24">Fileiras (1 &rarr; 24)</th></tr></thead>
+                    <tbody id="rack-body"></tbody>
+                </table>
+            </div>
+            <div class="legenda">
+                <div class="leg-item"><div class="l-cor" style="background:rgba(255,255,255,0.05);"></div> Vazia</div>
+                <div class="leg-item"><div class="l-cor" style="background:var(--success);"></div> Ok (&ge;10)</div>
+                <div class="leg-item"><div class="l-cor" style="background:var(--warning);"></div> Atencao (4-9)</div>
+                <div class="leg-item"><div class="l-cor" style="background:var(--danger);"></div> Critico (1-3)</div>
+            </div>
+        </div>
+        <div class="info-panel-overlay" id="panel-overlay"></div>
+        <div class="info-panel" id="info-panel">
+            <div class="handle"></div>
+            <h3 id="panel-titulo">Posicao</h3>
+            <div class="info-sub" id="panel-sub"></div>
+            <div id="panel-dados"></div>
+            <div style="margin-top:14px;display:flex;gap:8px;" id="panel-actions"></div>
+        </div>
+    </div>
+    <script src="assets/js/app.js"></script>
+    <script>
+    (async function() {
+        const usuario = await App.checkAuth();
+        if (!usuario) return;
+
+        let posicoes = [];
+        let posicoesMap = {};
+        let flashInterval = null;
+        let flashOn = false;
+
+        async function carregarRack() {
+            const data = await App.carregarPosicoes();
+            posicoes = data.posicoes || [];
+            posicoesMap = {};
+            posicoes.forEach(p => { posicoesMap[p.fileira + '_' + p.altura] = p; });
+            renderizarRack();
+            carregarSelectProdutos();
+        }
+
+        function corPorQuantidade(qtd) {
+            if (!qtd || qtd === 0) return 'rgba(255,255,255,0.03)';
+            if (qtd >= 10) return '#00d68f';
+            if (qtd >= 4) return '#ffa502';
+            return '#ff4757';
+        }
+
+        function montarBgMultiProdutos(produtos) {
+            if (!produtos || produtos.length === 0) return 'rgba(255,255,255,0.03)';
+            if (produtos.length === 1) return produtos[0].produto_cor || '#667eea';
+            const totalQtd = produtos.reduce((s, p) => s + p.quantidade, 0);
+            let gradParts = [];
+            let pct = 0;
+            produtos.forEach(p => {
+                const cor = p.produto_cor || '#667eea';
+                const fim = pct + (p.quantidade / totalQtd) * 100;
+                gradParts.push(cor + ' ' + pct + '% ' + fim + '%');
+                pct = fim;
+            });
+            return 'linear-gradient(180deg, ' + gradParts.join(', ') + ')';
+        }
+
+        function renderizarRack() {
+            const tbody = document.getElementById('rack-body');
+            let html = '';
+            for (let a = 5; a >= 1; a--) {
+                html += '<tr>';
+                html += `<td class="rc-h altura">A${a}</td>`;
+                for (let f = 1; f <= 24; f++) {
+                    const p = posicoesMap[f + '_' + a];
+                    const qtd = p ? (p.quantidade || 0) : 0;
+                    const produtos = p ? (p.produtos || []) : [];
+                    const isEmpty = qtd === 0;
+                    const bg = isEmpty ? '' : 'background:' + montarBgMultiProdutos(produtos) + ';';
+                    const h = Math.min((qtd / 15) * 100, 100);
+                    const dots = produtos.length > 1
+                        ? '<div class="rc-dots">' + produtos.map(pr => '<span class="rc-dot" style="background:' + App.escapeHtml(pr.produto_cor || '#667eea') + ';"></span>').join('') + '</div>'
+                        : '';
+                    html += `<td class="rc-cell ${isEmpty ? 'empty' : 'occupied'}" data-f="${f}" data-a="${a}" style="${bg}">
+                        ${isEmpty ? '' : `<div class="rc-bar" style="height:${h}%"></div>`}
+                        ${dots}
+                        ${qtd > 0 ? qtd : ''}
+                    </td>`;
+                }
+                html += '</tr>';
+            }
+            html += '<tr><td style="padding:2px;"></td>';
+            for (let f = 1; f <= 24; f++) html += `<td style="text-align:center;font-size:9px;color:var(--text-muted);padding-top:4px;">${f}</td>`;
+            html += '</tr>';
+            tbody.innerHTML = html;
+
+            tbody.querySelectorAll('.rc-cell:not(.empty)').forEach(cell => {
+                cell.addEventListener('click', () => {
+                    const f = parseInt(cell.dataset.f);
+                    const a = parseInt(cell.dataset.a);
+                    const p = posicoesMap[f + '_' + a];
+                    if (p) mostrarPainel(p, cell);
+                });
+            });
+        }
+
+        function mostrarPainel(p, cell) {
+            document.querySelectorAll('.rc-cell.selected').forEach(c => c.classList.remove('selected'));
+            if (cell) cell.classList.add('selected');
+            document.getElementById('panel-titulo').textContent = `F${p.fileira} · A${p.altura}`;
+            const produtos = p.produtos || [];
+            const totalQtd = p.quantidade || 0;
+
+            if (produtos.length === 0) {
+                document.getElementById('panel-sub').textContent = 'Vazia';
+                document.getElementById('panel-dados').innerHTML = '<div style="color:var(--text-muted);padding:10px 0;font-size:14px;">Posicao vazia</div>';
+            } else if (produtos.length === 1) {
+                const pr = produtos[0];
+                document.getElementById('panel-sub').textContent = pr.produto_nome;
+                document.getElementById('panel-dados').innerHTML = `
+                    <div class="d-row"><span class="d-lbl">Produto</span><span class="d-val">${App.escapeHtml(pr.produto_nome)}</span></div>
+                    <div class="d-row"><span class="d-lbl">Codigo</span><span class="d-val">${App.escapeHtml(pr.produto_codigo || '&mdash;')}</span></div>
+                    <div class="d-row"><span class="d-lbl">Quantidade</span><span class="d-val">${pr.quantidade} / 15</span></div>
+                    <div class="d-row"><span class="d-lbl">Cor</span><span class="d-val"><span class="color-preview" style="background:${App.escapeHtml(pr.produto_cor)};"></span></span></div>
+                `;
+            } else {
+                document.getElementById('panel-sub').textContent = produtos.length + ' produtos · ' + totalQtd + ' pallets';
+                let rowsHtml = `<div class="d-row"><span class="d-lbl">Total</span><span class="d-val" style="font-weight:700;">${totalQtd} / 15 pallets</span></div>`;
+                produtos.forEach(pr => {
+                    rowsHtml += `<div class="d-row"><span class="d-lbl"><span class="color-preview" style="background:${App.escapeHtml(pr.produto_cor)};width:12px;height:12px;display:inline-block;margin-right:6px;vertical-align:middle;"></span>${App.escapeHtml(pr.produto_nome)}</span><span class="d-val">${pr.quantidade}</span></div>`;
+                });
+                document.getElementById('panel-dados').innerHTML = rowsHtml;
+            }
+
+            const actions = document.getElementById('panel-actions');
+            actions.innerHTML = '';
+            if (usuario.perfil !== 'visualizador') {
+                if (totalQtd > 0) {
+                    actions.innerHTML = `<a href="saida.html" class="btn btn-danger btn-xs">Saida</a>`;
+                }
+                actions.innerHTML += `<a href="entrada.html" class="btn btn-success btn-xs">Entrada</a>`;
+            }
+            document.getElementById('info-panel').classList.add('open');
+            document.getElementById('panel-overlay').classList.add('open');
+        }
+
+        document.getElementById('panel-overlay').addEventListener('click', () => {
+            document.getElementById('info-panel').classList.remove('open');
+            document.getElementById('panel-overlay').classList.remove('open');
+            document.querySelectorAll('.rc-cell.selected').forEach(c => c.classList.remove('selected'));
+        });
+
+        function stopFlash() {
+            if (flashInterval) { clearInterval(flashInterval); flashInterval = null; }
+            document.querySelectorAll('.rc-cell.flash').forEach(c => c.classList.remove('flash'));
+        }
+
+        function startFlash(cells) {
+            stopFlash();
+            if (!cells || !cells.length) return;
+            flashOn = false;
+            flashInterval = setInterval(() => {
+                flashOn = !flashOn;
+                cells.forEach(c => { if (flashOn) c.classList.add('flash'); else c.classList.remove('flash'); });
+            }, 500);
+        }
+
+        function buscarProduto(q) {
+            stopFlash();
+            document.querySelectorAll('.rc-cell.hl').forEach(c => c.classList.remove('hl'));
+            document.getElementById('info-panel').classList.remove('open');
+            document.getElementById('panel-overlay').classList.remove('open');
+            if (!q) return;
+            const termos = q.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+            const hlCells = [];
+            let primeiroNome = '';
+            document.querySelectorAll('.rc-cell:not(.empty)').forEach(cell => {
+                const f = parseInt(cell.dataset.f), a = parseInt(cell.dataset.a);
+                const p = posicoesMap[f + '_' + a];
+                if (p && p.produtos) {
+                    const textos = p.produtos.map(pr => (pr.produto_nome + ' ' + (pr.produto_codigo || '')).toLowerCase());
+                    const textoUnido = textos.join(' ');
+                    if (termos.every(t => textoUnido.includes(t))) {
+                        cell.classList.add('hl');
+                        hlCells.push(cell);
+                        if (!primeiroNome && p.produtos.length > 0) primeiroNome = p.produtos[0].produto_nome;
+                    }
+                }
+            });
+            if (hlCells.length) {
+                hlCells[0].scrollIntoView({ block: 'center', inline: 'center' });
+                startFlash(hlCells);
+                document.getElementById('panel-titulo').textContent = primeiroNome;
+                document.getElementById('panel-sub').textContent = `Encontrado em ${hlCells.length} posicao(oes)`;
+                document.getElementById('panel-dados').innerHTML = `<div class="d-row"><span class="d-lbl">Posicoes</span><span class="d-val">${hlCells.length}</span></div>`;
+                document.getElementById('info-panel').classList.add('open');
+                document.getElementById('panel-overlay').classList.add('open');
+            } else {
+                App.toast('Produto nao encontrado', 'warning');
+            }
+        }
+
+        document.getElementById('btn-busca').addEventListener('click', () => buscarProduto(document.getElementById('busca-produto').value));
+        document.getElementById('busca-produto').addEventListener('keydown', e => { if (e.key === 'Enter') buscarProduto(e.target.value); });
+        document.getElementById('btn-limpar-vis').addEventListener('click', () => {
+            stopFlash();
+            document.getElementById('busca-produto').value = '';
+            document.getElementById('select-produto').value = '';
+            document.querySelectorAll('.rc-cell.hl').forEach(c => c.classList.remove('hl'));
+            document.getElementById('info-panel').classList.remove('open');
+            document.getElementById('panel-overlay').classList.remove('open');
+        });
+        document.getElementById('select-produto').addEventListener('change', function() {
+            document.getElementById('busca-produto').value = this.value;
+            buscarProduto(this.value);
+        });
+
+        async function carregarSelectProdutos() {
+            try {
+                const produtos = await App.carregarProdutos();
+                const ocupados = new Set();
+                posicoes.forEach(p => {
+                    if (p.produtos) p.produtos.forEach(pr => ocupados.add(pr.produto_id));
+                });
+                const sel = document.getElementById('select-produto');
+                sel.innerHTML = '<option value="">Selecionar produto...</option>' +
+                    produtos.filter(p => ocupados.has(p.id)).map(p =>
+                        `<option value="${App.escapeHtml(p.nome)}">${App.escapeHtml(p.nome)} (${App.escapeHtml(p.codigo)})</option>`
+                    ).join('');
+            } catch(e) {}
+        }
+
+        await carregarRack();
+    })();
+    </script>
+</body>
+</html>
