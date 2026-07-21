@@ -103,8 +103,8 @@ module.exports = async function handler(req, res) {
       }
 
       await client.query(
-        'INSERT INTO movimentacoes (tipo, produto_id, fileira, altura, quantidade, observacao, usuario_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        ['transferencia', produto_id, fileira_destino, altura_destino, quantidade,
+        'INSERT INTO movimentacoes (tipo, produto_id, fileira, altura, fileira_origem, altura_origem, fileira_destino, altura_destino, quantidade, observacao, usuario_id) VALUES ($1, $2, $3, $4, $5, $6, $3, $4, $7, $8, $9)',
+        ['transferencia', produto_id, fileira_destino, altura_destino, fileira_origem, altura_origem, quantidade,
          `Transferido de [${fileira_origem},${altura_origem}] para [${fileira_destino},${altura_destino}]${observacao ? ' - ' + observacao : ''}`,
          user.id]
       );
