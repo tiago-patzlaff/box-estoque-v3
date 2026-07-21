@@ -400,7 +400,7 @@
                 const badge = document.getElementById('produto-badge');
                 badge.style.display = 'block';
                 badge.innerHTML = '&#10003; ' + App.escapeHtml(produto.nome) +
-                    ' (Pedido #' + App.escapeHtml(pedido.numped) + ' &middot; PO: ' + App.escapeHtml(pedido.usu_pedcli) + ')' +
+                    ' (Pedido #' + App.escapeHtml(pedido.numped) + ' &middot; PO: ' + App.escapeHtml(pedido.usu_pedcli) + ' &middot; Cont: ' + App.escapeHtml(pedido.usu_nconteiner) + ')' +
                     ' <span class="edit-link" onclick="mostrarProdutoManual()">[alterar]</span>';
 
                 const bags = parseInt(pedido.bags);
