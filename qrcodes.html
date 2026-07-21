@@ -25,6 +25,8 @@
         .qr-sticker .label { font-size: 11px; font-weight: 700; color: var(--text); margin-top: 8px; }
         .qr-sticker .sub { font-size: 9px; color: var(--text-muted); }
     </style>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0a0e1a">
 </head>
 <body>
     <div class="header no-print">
@@ -105,6 +107,11 @@
 
         gerarTodos();
     })();
+    </script>
+    <script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('service-worker.js').catch(() => {});
+    }
     </script>
 </body>
 </html>
