@@ -89,20 +89,28 @@
                 `<div class="bar-row"><span class="bar-label" style="min-width:70px;text-align:left;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${App.escapeHtml(p.nome)}">${App.escapeHtml(p.nome.substring(0,10))}</span><div class="bar-track"><div class="bar-fill ${colors[i % colors.length]}" style="width:${(p.total/maxProd)*100}%">${p.total} (${p.posicoes}p)</div></div></div>`
             ).join('');
 
-            const maxAlt = Math.max(...Object.values(d.por_altura), 1);
+            const alturaMap = {};
+            (d.por_altura || []).forEach(a => alturaMap[a.altura] = a.total);
+            const maxAlt = Math.max(...Object.values(alturaMap), 1);
             document.getElementById('chart-alturas').innerHTML = [1,2,3,4,5].map(a => {
-                const val = d.por_altura[a] || 0;
+                const val = alturaMap[a] || 0;
                 return `<div class="bar-row"><span class="bar-label">A${a}</span><div class="bar-track"><div class="bar-fill blue" style="width:${(val/maxAlt)*100}%">${val}</div></div></div>`;
             }).join('');
 
-            const maxFil = Math.max(...Object.values(d.por_fileira), 1);
+            const fileiraMap = {};
+            (d.por_fileira || []).forEach(f => fileiraMap[f.fileira] = f.total);
+            const maxFil = Math.max(...Object.values(fileiraMap), 1);
             document.getElementById('chart-fileiras-rel').innerHTML = [1,4,7,10,13,16,19,22].map(f => {
                 let sum = 0;
-                for (let i = f; i < f+3 && i <= 24; i++) sum += d.por_fileira[i] || 0;
-                return `<div class="bar-row"><span class="bar-label">F${f}-${Math.min(f+2,24)}</span><div class="bar-track"><div class="bar-fill purple" style="width:${(sum/(maxAlt*3*15))*100}%">${sum}</div></div></div>`;
+                for (let i = f; i < f+3 && i <= 24; i++) sum += fileiraMap[i] || 0;
+                return `<div class="bar-row"><span class="bar-label">F${f}-${Math.min(f+2,24)}</span><div class="bar-track"><div class="bar-fill purple" style="width:${(sum/(maxFil*3*15))*100}%">${sum}</div></div></div>`;
             }).join('');
 
-            const movH = d.movimentacoes_hoje;
+            const movH = { entradas_hoje: 0, saidas_hoje: 0, entradas_qtd: 0, saidas_qtd: 0 };
+            (d.movimentacoes_hoje || []).forEach(m => {
+                if (m.tipo === 'entrada') { movH.entradas_hoje = m.total; movH.entradas_qtd = m.qtd_total || 0; }
+                if (m.tipo === 'saida') { movH.saidas_hoje = m.total; movH.saidas_qtd = m.qtd_total || 0; }
+            });
             document.getElementById('chart-mov-hoje').innerHTML = `
                 <div class="bar-row"><span class="bar-label" style="min-width:60px;text-align:left;">Entradas</span><div class="bar-track"><div class="bar-fill green" style="width:${movH.entradas_hoje > 0 ? 70 : 5}%">${movH.entradas_hoje}x (${movH.entradas_qtd}p)</div></div></div>
                 <div class="bar-row"><span class="bar-label" style="min-width:60px;text-align:left;">Saidas</span><div class="bar-track"><div class="bar-fill red" style="width:${movH.saidas_hoje > 0 ? 70 : 5}%">${movH.saidas_hoje}x (${movH.saidas_qtd}p)</div></div></div>

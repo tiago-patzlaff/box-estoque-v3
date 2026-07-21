@@ -105,12 +105,6 @@ module.exports = async function handler(req, res) {
         [tipo, produto_id, fileira, altura, quantidade, observacao || '', user.id]
       );
 
-      await client.query(
-        `DELETE FROM movimentacoes WHERE id NOT IN (
-          SELECT id FROM movimentacoes ORDER BY created_at DESC LIMIT 200
-        )`
-      );
-
       await client.query('COMMIT');
 
       await logAuditoria(user.id, `movimentacao_${tipo}`, `${tipo} - produto_id:${produto_id} fileira:${fileira} altura:${altura} qtd:${quantidade}`, ip);

@@ -49,7 +49,7 @@
         async function carregar(page = 1) {
             const div = document.getElementById('lista-mov');
             div.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Carregando...</div>';
-            let url = `api/movimentacoes?page=${page}&limit=20`;
+            let url = `api/movimentacoes?page=${page}&por_pagina=20`;
             const tipo = document.getElementById('filtro-tipo').value;
             const di = document.getElementById('filtro-data-inicio').value;
             const df = document.getElementById('filtro-data-fim').value;
@@ -61,7 +61,9 @@
             if (!res || !res.ok) { div.innerHTML = '<div class="alert-error" style="display:block;">Erro ao carregar</div>'; return; }
 
             dadosAtuais = res.data.movimentacoes || [];
-            const pag = res.data.paginacao;
+            const pagTotal = res.data.total || 0;
+            const pagPage = res.data.page || 1;
+            const pagTotalPages = res.data.total_pages || 1;
 
             if (!dadosAtuais.length) {
                 div.innerHTML = '<div class="empty-state"><p>Nenhuma movimentacao encontrada</p></div>';
@@ -73,8 +75,8 @@
                 const tipoLabel = m.tipo === 'entrada' ? 'Entrada' : m.tipo === 'saida' ? 'Saida' : 'Transferencia';
                 const cls = m.tipo === 'entrada' ? 'style="color:var(--success);font-weight:700;"' : m.tipo === 'saida' ? 'style="color:var(--danger);font-weight:700;"' : 'style="color:var(--info);font-weight:700;"';
                 const data = App.formatDate(m.created_at);
-                const posOrig = `F${m.fileira_origem}\u00B7A${m.altura_origem}`;
-                const posDest = m.fileira_destino ? ` \u2192 F${m.fileira_destino}\u00B7A${m.altura_destino}` : '';
+                const posOrig = `F${m.fileira}\u00B7A${m.altura}`;
+                const posDest = '';
                 return `<div>
                     <span ${cls}>${App.escapeHtml(tipoLabel)}</span>
                     <span style="font-weight:700;min-width:80px;font-size:13px;">${posOrig}${posDest}</span>
@@ -87,7 +89,7 @@
                 </div>`;
             }).join('') + '</div>';
 
-            renderPagination(pag);
+            renderPagination({ total_paginas: pagTotalPages, pagina_atual: pagPage, total_registros: pagTotal });
         }
 
         function renderPagination(pag) {
@@ -109,8 +111,8 @@
             const headers = ['Data', 'Tipo', 'Posicao Origem', 'Posicao Destino', 'Produto', 'Quantidade', 'Observacao', 'Usuario'];
             const rows = dadosAtuais.map(m => [
                 App.formatDate(m.created_at), m.tipo,
-                `F${m.fileira_origem} A${m.altura_origem}`,
-                m.fileira_destino ? `F${m.fileira_destino} A${m.altura_destino}` : '',
+                `F${m.fileira} A${m.altura}`,
+                '',
                 m.produto_nome || '', m.quantidade, m.observacao || '', m.usuario_nome || ''
             ]);
             App.generateCsv(headers, rows, `movimentacoes_${new Date().toISOString().slice(0,10)}.csv`);

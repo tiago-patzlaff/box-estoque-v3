@@ -48,7 +48,7 @@ module.exports = async function handler(req, res) {
 
     const dataResult = await pool.query(
       `SELECT m.id, m.tipo, m.produto_id, m.fileira, m.altura, m.quantidade, m.observacao, m.created_at,
-              p.nome AS produto_nome, p.codigo AS produto_codigo,
+              p.nome AS produto_nome, p.codigo AS produto_codigo, p.cor AS produto_cor,
               u.nome AS usuario_nome
        FROM movimentacoes m
        LEFT JOIN produtos p ON p.id = m.produto_id

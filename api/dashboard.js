@@ -8,8 +8,8 @@ module.exports = async function handler(req, res) {
     return jsonResponse(res, 405, { error: 'Método não permitido' });
   }
 
-  const authError = requireAuth(req, res);
-  if (authError) return;
+  const user = requireAuth(req, res);
+  if (!user) return;
 
   try {
     const posicoesResult = await pool.query(`
