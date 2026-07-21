@@ -85,11 +85,12 @@ const App = {
                 if (res.ok) {
                     synced++;
                 } else {
-                    console.warn('Sync falhou:', res.status, resData);
+                    const erroMsg = resData.erro || resData.error || JSON.stringify(resData);
+                    this.toast(`Erro sync [${res.status}]: ${erroMsg}`, 'error');
                     failed.push(item);
                 }
             } catch (err) {
-                console.warn('Sync erro:', err);
+                this.toast(`Erro sync: ${err.message}`, 'error');
                 failed.push(item);
             }
         }
