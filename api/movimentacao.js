@@ -119,6 +119,6 @@ module.exports = async function handler(req, res) {
     }
 
   } catch (e) {
-    jsonResponse(res, 500, { erro: 'Erro interno' });
+    jsonResponse(res, 500, { erro: 'Erro interno', debug: e.message });
   }
 };

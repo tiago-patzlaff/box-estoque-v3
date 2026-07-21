@@ -75,11 +75,16 @@ const App = {
                 const headers = { 'Content-Type': 'application/json' };
                 const token = this._token || item.token;
                 if (token) headers['Authorization'] = 'Bearer ' + token;
+                const body = { ...item.body };
+                if (body.produto_id) body.produto_id = parseInt(body.produto_id) || body.produto_id;
+                if (body.fileira) body.fileira = parseInt(body.fileira) || body.fileira;
+                if (body.altura) body.altura = parseInt(body.altura) || body.altura;
+                if (body.quantidade) body.quantidade = parseInt(body.quantidade) || body.quantidade;
                 const res = await fetch(item.url, {
                     method: item.method,
                     credentials: 'same-origin',
                     headers,
-                    body: JSON.stringify(item.body)
+                    body: JSON.stringify(body)
                 });
                 const resData = await res.json().catch(() => ({}));
                 if (res.ok) {
