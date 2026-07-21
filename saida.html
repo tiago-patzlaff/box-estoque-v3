@@ -287,7 +287,11 @@
             const res = await App.apiPost('api/movimentacao', data);
             btn.disabled = false;
             if (res && res.ok) {
-                App.toast('Saida registrada com sucesso!', 'success');
+                if (res.data.offline) {
+                    App.toast('Saida salva offline — sera sincronizada quando voltar a internet', 'warning');
+                } else {
+                    App.toast('Saida registrada com sucesso!', 'success');
+                }
                 document.getElementById('quantidade').value = '';
                 document.getElementById('observacao').value = '';
                 document.getElementById('qr-confirm').style.display = 'none';

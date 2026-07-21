@@ -210,13 +210,26 @@ const App = {
         let url = 'api/produtos';
         if (filtro) url += '?q=' + encodeURIComponent(filtro);
         const res = await App.apiGet(url);
-        if (res && res.ok) return res.data;
+        if (res && res.ok) {
+            const data = Array.isArray(res.data) ? res.data : (res.data.produtos || []);
+            localStorage.setItem('cached_produtos', JSON.stringify(data));
+            return data;
+        }
+        if (!navigator.onLine) {
+            try { return JSON.parse(localStorage.getItem('cached_produtos') || '[]'); } catch { return []; }
+        }
         return [];
     },
 
     async carregarPosicoes() {
         const res = await App.apiGet('api/posicoes');
-        if (res && res.ok) return res.data;
+        if (res && res.ok) {
+            localStorage.setItem('cached_posicoes', JSON.stringify(res.data));
+            return res.data;
+        }
+        if (!navigator.onLine) {
+            try { return JSON.parse(localStorage.getItem('cached_posicoes') || '{"posicoes":[]}'); } catch { return { posicoes: [] }; }
+        }
         return { posicoes: [], resumo: {} };
     },
 

@@ -117,7 +117,11 @@
             const res = await App.apiPost('api/transferencia', data);
             btn.disabled = false;
             if (res && res.ok) {
-                App.toast('Transferencia realizada com sucesso!', 'success');
+                if (res.data.offline) {
+                    App.toast('Transferencia salva offline — sera sincronizada quando voltar a internet', 'warning');
+                } else {
+                    App.toast('Transferencia realizada com sucesso!', 'success');
+                }
                 document.getElementById('form-transfer').reset();
                 await carregarDados();
             } else {

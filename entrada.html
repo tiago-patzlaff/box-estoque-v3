@@ -102,12 +102,22 @@
                 return;
             }
 
+            let ocupados = 0;
+            let produtos = [];
             const res = await App.apiGet(`api/posicoes?fileira=${f}&altura=${a}`);
-            if (!res || !res.ok) { el.style.display = 'none'; return; }
-
-            const pos = res.data.posicao;
-            const ocupados = pos ? pos.quantidade : 0;
-            const produtos = pos ? (pos.produtos || []) : [];
+            if (res && res.ok && res.data.posicao) {
+                const pos = res.data.posicao;
+                ocupados = pos.quantidade || 0;
+                produtos = pos.produtos || [];
+            } else if (!navigator.onLine) {
+                try {
+                    const cache = JSON.parse(localStorage.getItem('cached_posicoes') || '{}');
+                    const posicoes = cache.posicoes || [];
+                    const match = posicoes.filter(p => p.fileira === f && p.altura === a);
+                    produtos = match.filter(p => p.quantidade > 0);
+                    ocupados = match.reduce((sum, p) => sum + (p.quantidade || 0), 0);
+                } catch {}
+            }
             const vagas = MAX_PALLET - ocupados;
             const pct = (ocupados / MAX_PALLET) * 100;
 
@@ -191,6 +201,27 @@
                     quantidade: res.data.posicao.quantidade
                 });
                 return primeiro;
+            }
+            if (!navigator.onLine) {
+                try {
+                    const cache = JSON.parse(localStorage.getItem('cached_posicoes') || '{}');
+                    const posicoes = cache.posicoes || [];
+                    const match = posicoes.filter(p => p.fileira === f && p.altura === a && p.quantidade > 0);
+                    if (match.length > 0) {
+                        const primeiro = match[0];
+                        const sel = document.getElementById('produto_id');
+                        for (let opt of sel.options) {
+                            if (opt.value == primeiro.produto_id) { opt.selected = true; break; }
+                        }
+                        if (fromQR) mostrarProdutoQR({
+                            produto_id: primeiro.produto_id,
+                            produto_nome: primeiro.produto_nome,
+                            produto_codigo: primeiro.produto_codigo,
+                            quantidade: match.reduce((s, p) => s + p.quantidade, 0)
+                        });
+                        return primeiro;
+                    }
+                } catch {}
             }
             mostrarProdutoManual();
             return null;
@@ -292,7 +323,11 @@
             const res = await App.apiPost('api/movimentacao', data);
             btn.disabled = false;
             if (res && res.ok) {
-                App.toast('Entrada registrada com sucesso!', 'success');
+                if (res.data.offline) {
+                    App.toast('Entrada salva offline — sera sincronizada quando voltar a internet', 'warning');
+                } else {
+                    App.toast('Entrada registrada com sucesso!', 'success');
+                }
                 document.getElementById('form-entrada').reset();
                 document.getElementById('capacidade-info').style.display = 'none';
                 mostrarProdutoManual();
