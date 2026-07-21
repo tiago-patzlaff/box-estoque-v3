@@ -100,7 +100,7 @@ const App = {
                     await new Promise(r => setTimeout(r, 2000));
                     failed.push(item);
                 } else {
-                    const erroMsg = resData.erro || resData.error || resData.debug || `HTTP ${res.status}`;
+                    const erroMsg = resData.debug || resData.erro || resData.error || `HTTP ${res.status}`;
                     this.toast(`Sync [${res.status}]: ${erroMsg}`, 'error');
                     failed.push(item);
                 }
