@@ -24,8 +24,9 @@ module.exports = async function handler(req, res) {
 
   const params = new URLSearchParams();
   if (mesAno) params.append('mesAno', mesAno);
+  params.append('registrados', '0');
   if (pedidoExp) params.append('pedidoExp', pedidoExp);
-  if (po) params.append('po', po);
+  params.append('po', po || ' ');
 
   const queryString = params.toString();
   const url = `${config.PELLETS_API_URL}${queryString ? '?' + queryString : ''}`;
@@ -53,7 +54,9 @@ function fetchExternal(url, apiKey) {
         }
         try {
           const parsed = JSON.parse(data);
-          const pedidos = (parsed.pedidos || parsed.data || parsed).map(p => ({
+          const raw = parsed?.result?.resultados || parsed?.pedidos || parsed?.data || parsed;
+          const items = Array.isArray(raw) ? raw : [];
+          const pedidos = items.map(p => ({
             numped: p.numped,
             produto: p.produto,
             bags: p.bags,
