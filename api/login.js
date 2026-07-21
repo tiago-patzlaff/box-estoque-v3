@@ -48,6 +48,6 @@ module.exports = async function handler(req, res) {
       usuario: { id: user.id, nome: user.nome, usuario: user.usuario, perfil: user.perfil }
     });
   } catch (e) {
-    jsonResponse(res, 500, { erro: 'Erro ao fazer login' });
+    jsonResponse(res, 500, { erro: 'Erro ao fazer login', debug: e.message });
   }
 };
