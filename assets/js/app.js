@@ -106,9 +106,16 @@ const App = {
                 headers: this._authHeaders()
             });
             const data = await res.json();
-            if (!data.autenticado) { window.location.href = 'login.html'; return null; }
-            localStorage.setItem('cached_user', JSON.stringify(data.usuario));
-            return data.usuario;
+            if (data.autenticado) {
+                localStorage.setItem('cached_user', JSON.stringify(data.usuario));
+                return data.usuario;
+            }
+            if (!navigator.onLine || res.status >= 500) {
+                const cached = localStorage.getItem('cached_user');
+                if (cached) return JSON.parse(cached);
+            }
+            window.location.href = 'login.html';
+            return null;
         } catch (e) {
             if (!navigator.onLine) {
                 const cached = localStorage.getItem('cached_user');

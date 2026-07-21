@@ -57,6 +57,7 @@
                 const r = await res.json();
                 if (res.ok && r.ok) {
                     if (r.token) localStorage.setItem('token', r.token);
+                    if (r.usuario) localStorage.setItem('cached_user', JSON.stringify(r.usuario));
                     window.location.href = 'index.html';
                 } else {
                     a.innerHTML = '<div class="alert-error">' + (r.erro || 'Erro ao fazer login') + '</div>';
