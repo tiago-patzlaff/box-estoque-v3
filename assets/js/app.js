@@ -80,22 +80,32 @@ const App = {
                 if (body.fileira) body.fileira = parseInt(body.fileira) || body.fileira;
                 if (body.altura) body.altura = parseInt(body.altura) || body.altura;
                 if (body.quantidade) body.quantidade = parseInt(body.quantidade) || body.quantidade;
+
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 10000);
                 const res = await fetch(item.url, {
                     method: item.method,
                     credentials: 'same-origin',
                     headers,
-                    body: JSON.stringify(body)
+                    body: JSON.stringify(body),
+                    cache: 'no-store',
+                    signal: controller.signal
                 });
+                clearTimeout(timeout);
+
                 const resData = await res.json().catch(() => ({}));
                 if (res.ok) {
                     synced++;
+                } else if (res.status === 503) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    failed.push(item);
                 } else {
                     const erroMsg = resData.erro || resData.error || resData.debug || `HTTP ${res.status}`;
                     this.toast(`Sync [${res.status}]: ${erroMsg}`, 'error');
                     failed.push(item);
                 }
             } catch (err) {
-                this.toast(`Sync falha: ${err.message}`, 'error');
+                await new Promise(r => setTimeout(r, 2000));
                 failed.push(item);
             }
         }
@@ -106,7 +116,7 @@ const App = {
         if (failed.length === 0 && synced > 0) {
             this.toast('Tudo sincronizado!', 'success');
         } else if (failed.length > 0) {
-            this.toast(`${failed.length} operacao(oes) falhou — sera tentado novamente`, 'warning');
+            this.toast(`${failed.length} operacao(oes) pendente(s)`, 'warning');
         }
     },
 
