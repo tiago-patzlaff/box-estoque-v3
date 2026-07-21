@@ -90,12 +90,12 @@ const App = {
                 if (res.ok) {
                     synced++;
                 } else {
-                    const erroMsg = resData.erro || resData.error || JSON.stringify(resData);
-                    this.toast(`Erro sync [${res.status}]: ${erroMsg}`, 'error');
+                    const erroMsg = resData.erro || resData.error || resData.debug || `HTTP ${res.status}`;
+                    this.toast(`Sync [${res.status}]: ${erroMsg}`, 'error');
                     failed.push(item);
                 }
             } catch (err) {
-                this.toast(`Erro sync: ${err.message}`, 'error');
+                this.toast(`Sync falha: ${err.message}`, 'error');
                 failed.push(item);
             }
         }
@@ -169,7 +169,8 @@ const App = {
         const icons = { success: '&#10003;', error: '&#10007;', warning: '&#9888;', info: '&#8505;' };
         t.innerHTML = `<span>${icons[type] || ''}</span> ${App.escapeHtml(msg)}`;
         container.appendChild(t);
-        setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(100px)'; setTimeout(() => t.remove(), 300); }, 4000);
+        const duration = type === 'error' ? 8000 : 4000;
+        setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(100px)'; setTimeout(() => t.remove(), 300); }, duration);
     },
 
     async apiFetch(url, options = {}) {

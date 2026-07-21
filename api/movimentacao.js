@@ -12,7 +12,12 @@ module.exports = async function handler(req, res) {
     const user = requireWrite(req, res);
     if (!user) return;
 
-    const { tipo, produto_id, fileira, altura, quantidade, observacao } = req.body || {};
+    let body = req.body;
+    if (!body || typeof body === 'string') {
+      try { body = JSON.parse(body || '{}'); } catch { body = {}; }
+    }
+
+    const { tipo, produto_id, fileira, altura, quantidade, observacao } = body;
 
     if (!tipo || !['entrada', 'saida'].includes(tipo)) {
       return jsonResponse(res, 400, { erro: "Tipo deve ser 'entrada' ou 'saida'" });
