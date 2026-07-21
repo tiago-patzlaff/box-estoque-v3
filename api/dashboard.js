@@ -1,7 +1,7 @@
 const { pool, config, setCors, handleOptions, jsonResponse, requireAuth } = require('./_lib/auth');
 
 module.exports = async function handler(req, res) {
-  setCors(res);
+  setCors(res, req);
   if (handleOptions(req, res)) return;
 
   if (req.method !== 'GET') {
