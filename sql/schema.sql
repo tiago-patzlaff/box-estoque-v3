@@ -72,7 +72,7 @@ BEGIN
 END $$;
 
 INSERT INTO usuarios (nome, usuario, senha_hash, perfil)
-VALUES ('Administrador', 'admin', '$2a$10$Pw/C9HTIU76Gsv0T1TSdWe8VYunPl3TeI5YdgIBdJ5JpWeHNsNwZe', 'admin')
+VALUES ('Administrador', 'ti@ipumirim.com.br', '$2a$10$Csfx6zrVHfGzYrdGeaXVeeusQtx7PLalFUQIEeiI.8RqXEbSSSlhu', 'admin')
 ON CONFLICT (usuario) DO NOTHING;
 
 INSERT INTO posicoes (fileira, altura, quantidade)
