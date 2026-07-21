@@ -66,25 +66,30 @@ const App = {
     async _syncPending() {
         const queue = this._getQueue();
         if (queue.length === 0) return;
+        if (!navigator.onLine) return;
         this.toast('Sincronizando operacoes pendentes...', 'info');
         let synced = 0;
         const failed = [];
         for (const item of queue) {
             try {
                 const headers = { 'Content-Type': 'application/json' };
-                if (item.token) headers['Authorization'] = 'Bearer ' + item.token;
+                const token = this._token || item.token;
+                if (token) headers['Authorization'] = 'Bearer ' + token;
                 const res = await fetch(item.url, {
                     method: item.method,
                     credentials: 'same-origin',
                     headers,
                     body: JSON.stringify(item.body)
                 });
+                const resData = await res.json().catch(() => ({}));
                 if (res.ok) {
                     synced++;
                 } else {
+                    console.warn('Sync falhou:', res.status, resData);
                     failed.push(item);
                 }
-            } catch {
+            } catch (err) {
+                console.warn('Sync erro:', err);
                 failed.push(item);
             }
         }
@@ -274,6 +279,8 @@ const App = {
     showModal(id) { document.getElementById(id)?.classList.add('open'); },
     hideModal(id) { document.getElementById(id)?.classList.remove('open'); },
 
+    retrySync() { this._syncPending(); },
+
     gerarCorUnica(nome, codigo) {
         const texto = (nome || '') + (codigo || '');
         let hash = 0;
@@ -331,7 +338,9 @@ const App = {
 
     _setupOfflineSync() {
         this._updatePendingBadge();
-        if (navigator.onLine) this._syncPending();
+        if (navigator.onLine) {
+            setTimeout(() => this._syncPending(), 2000);
+        }
     }
 };
 
