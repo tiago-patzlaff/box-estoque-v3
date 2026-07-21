@@ -115,8 +115,13 @@
         if (r.ocupacao_pallets > 80) document.getElementById('progress-fill').style.background = 'var(--grad-danger)';
         else if (r.ocupacao_pallets > 50) document.getElementById('progress-fill').style.background = 'var(--grad-warning)';
 
-        document.getElementById('entradas-hoje').textContent = d.movimentacoes_hoje.entradas_hoje;
-        document.getElementById('saidas-hoje').textContent = d.movimentacoes_hoje.saidas_hoje;
+        const movHoje = { entradas: 0, saidas: 0 };
+        (d.movimentacoes_hoje || []).forEach(m => {
+            if (m.tipo === 'entrada') movHoje.entradas = parseInt(m.total) || 0;
+            if (m.tipo === 'saida') movHoje.saidas = parseInt(m.total) || 0;
+        });
+        document.getElementById('entradas-hoje').textContent = movHoje.entradas;
+        document.getElementById('saidas-hoje').textContent = movHoje.saidas;
         document.getElementById('produtos-distintos').textContent = r.produtos_distintos;
         document.getElementById('criticas-count').textContent = d.criticas.length;
         document.getElementById('dash-stats').style.display = '';
@@ -131,11 +136,13 @@
             ).join('');
         }
 
-        const maxFileira = Math.max(...Object.values(d.por_fileira), 1);
+        const maxFileira = Math.max(...(d.por_fileira || []).map(f => f.total), 1);
+        const fileiraMap = {};
+        (d.por_fileira || []).forEach(f => fileiraMap[f.fileira] = f.total);
         const fileirasHtml = [1,6,11,17,22].map(f => {
             const vals = [];
             for (let i = f; i < Math.min(f + 5, 25); i++) {
-                vals.push({ label: 'F' + i, val: d.por_fileira[i] || 0 });
+                vals.push({ label: 'F' + i, val: fileiraMap[i] || 0 });
             }
             return vals;
         }).flat().slice(0, 12).map(v =>
