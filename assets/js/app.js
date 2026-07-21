@@ -175,6 +175,23 @@ const App = {
                 window.location.href = 'login.html';
                 return null;
             }
+            if (res.status === 503 || (res.status === 0)) {
+                const method = (options.method || 'GET').toUpperCase();
+                if (method !== 'GET' && options.body) {
+                    const queue = this._getQueue();
+                    queue.push({
+                        url,
+                        method,
+                        body: JSON.parse(options.body),
+                        token: this._token,
+                        timestamp: Date.now()
+                    });
+                    this._saveQueue(queue);
+                    this.toast('Salvo offline — sera sincronizado quando voltar a internet', 'warning');
+                    return { ok: true, status: 0, data: { offline: true, mensagem: 'Operacao salva offline' } };
+                }
+                return { ok: false, status: res.status, data };
+            }
             return { ok: res.ok, status: res.status, data };
         } catch (e) {
             const method = (options.method || 'GET').toUpperCase();
